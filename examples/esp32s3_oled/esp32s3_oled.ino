@@ -36,6 +36,13 @@ constexpr bool kDisplayMirrorY = true;
 void setup() {
   Serial.begin(115200);
 
+  if (!psramFound()) {
+    while (true) {
+      printf("PSRAM not found\n");
+      delay(1000);
+    }
+  }
+
   auto audio_input_device = std::make_shared<ai_vox::I2sStdAudioInputDevice>(kMicPinBclk, kMicPinWs, kMicPinDin);
   auto audio_output_device = std::make_shared<ai_vox::I2sStdAudioOutputDevice>(kSpeakerPinBclk, kSpeakerPinWs, kSpeakerPinDout);
 
