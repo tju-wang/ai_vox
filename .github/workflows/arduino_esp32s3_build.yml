@@ -69,9 +69,12 @@ jobs:
           ${ARDUINO_CLI_DIR}/arduino-cli --config-dir ${ARDUINO_CLI_CONFIG_DIR} config set library.enable_unsafe_install true
           ${ARDUINO_CLI_DIR}/arduino-cli --config-dir ${ARDUINO_CLI_CONFIG_DIR} config dump
           ${ARDUINO_CLI_DIR}/arduino-cli --config-dir ${ARDUINO_CLI_CONFIG_DIR} core install esp32:esp32@${{matrix.core_version}}
+      - name: install lib lvgl@9.2.2
+        run: |
+          ${ARDUINO_CLI_DIR}/arduino-cli --config-dir ${ARDUINO_CLI_CONFIG_DIR} lib install "lvgl@9.2.2"
       - name: install lib dependencies
         run: |
-          ${ARDUINO_CLI_DIR}/arduino-cli --config-dir ${ARDUINO_CLI_CONFIG_DIR} lib install --git-url "${GITHUB_SERVER_URL}/${GITHUB_REPOSITORY}.git" --dependencies
+          ${ARDUINO_CLI_DIR}/arduino-cli --config-dir ${ARDUINO_CLI_CONFIG_DIR} lib install --git-url "${GITHUB_SERVER_URL}/${GITHUB_REPOSITORY}.git"
       - name: compile
         run: |
           echo "compile ${ARDUINO_USER_DIR}/libraries/${LIB_DIR_NAME}/examples/${{matrix.example}}/${{matrix.example}}.ino"
