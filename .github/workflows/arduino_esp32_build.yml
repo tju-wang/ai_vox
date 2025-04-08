@@ -1,4 +1,4 @@
-name: Arduino ESP32 Build
+name: Arduino ESP32S3 Build
 
 on:
   push:
@@ -16,9 +16,9 @@ jobs:
       ARDUINO_USER_DIR: ${{github.workspace}}/arduino_user
     strategy:
       matrix:
-        example: ["esp32s3_oled"]
+        example: ["esp32_oled"]
         core_version: ["3.2.0"]
-        fqbn: ["esp32:esp32:esp32s3"]
+        fqbn: ["esp32:esp32:esp32"]
 
     steps:
       - name: download arduino cli
