@@ -14,7 +14,6 @@
 #include "audio_session.h"
 #include "messaging/message.h"
 #include "messaging/message_queue.h"
-#include "opus_audio_encoder.h"
 
 struct OpusDecoder;
 class AudioInputEngine {
@@ -41,8 +40,6 @@ class AudioInputEngine {
   std::condition_variable cv_;
   MessageQueue message_queue_;
   struct OpusEncoder *opus_encoder_ = nullptr;
-  StackType_t *task_stack_ = nullptr;
-  StaticTask_t task_buffer_;
 };
 
 #endif

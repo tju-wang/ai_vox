@@ -28,8 +28,12 @@ void AudioOutputEngine::Open(std::shared_ptr<ai_vox::AudioOutputDevice> audio_ou
   opus_decoder_ = opus_decoder_create(sample_rate, channels, &error);
   assert(opus_decoder_ != nullptr);
 
-  const auto ret = xTaskCreate(&AudioOutputEngine::Loop, "AO", 4096 * 4, this, tskIDLE_PRIORITY, nullptr);
+  const auto ret = xTaskCreate(&AudioOutputEngine::Loop, "AudioOutput", 1024 * 10, this, tskIDLE_PRIORITY + 1, nullptr);
   assert(ret == pdPASS);
+  if (ret != pdPASS) {
+    CLOG("xTaskCreate failed: %d", ret);
+    return;
+  }
 
   Message message(MessageType::kOpen);
   message.Write(std::move(audio_output_device));
@@ -115,6 +119,7 @@ loop_start:
       auto data = *message.Read<std::shared_ptr<std::vector<uint8_t>>>();
       std::vector<int16_t> pcm(frame_size_);
       auto ret = opus_decode(opus_decoder_, data->data(), data->size(), pcm.data(), pcm.size(), 0);
+      data.reset();
       if (audio_output_device) {
         audio_output_device->Write(std::move(pcm));
       }

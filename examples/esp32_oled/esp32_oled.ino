@@ -14,18 +14,18 @@ namespace {
 constexpr char kWifiSsid[] = "ssid";
 constexpr char kWifiPassword[] = "123456";
 
-constexpr gpio_num_t kMicPinBclk = GPIO_NUM_5;
-constexpr gpio_num_t kMicPinWs = GPIO_NUM_2;
-constexpr gpio_num_t kMicPinDin = GPIO_NUM_4;
+constexpr gpio_num_t kMicPinBclk = GPIO_NUM_25;
+constexpr gpio_num_t kMicPinWs = GPIO_NUM_26;
+constexpr gpio_num_t kMicPinDin = GPIO_NUM_27;
 
-constexpr gpio_num_t kSpeakerPinBclk = GPIO_NUM_13;
-constexpr gpio_num_t kSpeakerPinWs = GPIO_NUM_14;
-constexpr gpio_num_t kSpeakerPinDout = GPIO_NUM_1;
+constexpr gpio_num_t kSpeakerPinBclk = GPIO_NUM_33;
+constexpr gpio_num_t kSpeakerPinWs = GPIO_NUM_32;
+constexpr gpio_num_t kSpeakerPinDout = GPIO_NUM_23;
 
-constexpr gpio_num_t kI2cPinSda = GPIO_NUM_40;
-constexpr gpio_num_t kI2cPinScl = GPIO_NUM_41;
+constexpr gpio_num_t kI2cPinSda = GPIO_NUM_21;
+constexpr gpio_num_t kI2cPinScl = GPIO_NUM_22;
 
-constexpr gpio_num_t kTriggerPin = GPIO_NUM_0;
+constexpr gpio_num_t kTriggerPin = GPIO_NUM_34;
 
 constexpr uint32_t kDisplayWidth = 128;
 constexpr uint32_t kDisplayHeight = 64;

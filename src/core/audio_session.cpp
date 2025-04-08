@@ -100,14 +100,14 @@ bool AudioSession::Open() {
 
   sem_ = xSemaphoreCreateBinary();
 
-  const auto task_create_ret = xTaskCreate(RecevieLoop, "RecevieLoop", 4096, this, tskIDLE_PRIORITY, nullptr);
+  const auto task_create_ret = xTaskCreate(RecevieLoop, "RecevieLoop", 1024 * 2, this, tskIDLE_PRIORITY, nullptr);
   assert(task_create_ret == pdPASS);
   return true;
 }
 
 bool AudioSession::Close() {
   audio_input_stream_.reset();
-  audio_output_stream_.reset();
+
   if (udp_fd_ != -1) {
     close(udp_fd_);
     udp_fd_ = -1;
@@ -157,7 +157,6 @@ void AudioSession::RecevieLoop() {
     std::vector<uint8_t> data(1500);
     int ret = recv(udp_fd_, data.data(), data.size(), 0);
     if (ret < 0) {
-      CLOG("exit recevie loop");
       xSemaphoreGive(sem_);
       return;
     }
@@ -171,14 +170,14 @@ void AudioSession::RecevieLoop() {
     }
 
     uint32_t sequence = ntohl(*(uint32_t*)&data[12]);
+
     if (expected_sequence_ != sequence) {
-      CLOG(
-          "sequence mismatch. expected sequence_: %u, sequence: %u, dropped: "
-          "%u",
-          expected_sequence_,
-          sequence,
-          sequence - expected_sequence_);
+      CLOG("sequence mismatch. expected sequence_: %u, sequence: %u, dropped: %" PRId64,
+           expected_sequence_,
+           sequence,
+           static_cast<int64_t>(sequence) - static_cast<int64_t>(expected_sequence_));
     }
+
     expected_sequence_ = sequence + 1;
 #if 1
     std::vector<uint8_t> decrypted;

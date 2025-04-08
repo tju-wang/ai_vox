@@ -13,14 +13,12 @@
 
 namespace {
 constexpr size_t kMaxOpusPacketSize = 1500;
-constexpr size_t kTaskStackSize = 4096 * 8;
 }  // namespace
 
 AudioInputEngine::AudioInputEngine(std::shared_ptr<ai_vox::AudioInputDevice> audio_input_device, const AudioInputEngine::DataHandler& handler)
-    : audio_input_device_(std::move(audio_input_device)), handler_(handler), task_stack_(new StackType_t[kTaskStackSize]) {
-  assert(task_stack_ != nullptr);
-  uint32_t frame_rate = 16000;
-  uint32_t channels = 1;
+    : audio_input_device_(std::move(audio_input_device)), handler_(handler) {
+  constexpr uint32_t frame_rate = 16000;
+  constexpr uint32_t channels = 1;
   int error = 0;
   opus_encoder_ = opus_encoder_create(frame_rate, channels, OPUS_APPLICATION_VOIP, &error);
   assert(opus_encoder_ != nullptr);
@@ -30,11 +28,16 @@ AudioInputEngine::AudioInputEngine(std::shared_ptr<ai_vox::AudioInputDevice> aud
   }
 
   opus_encoder_ctl(opus_encoder_, OPUS_SET_DTX(1));
-  opus_encoder_ctl(opus_encoder_, OPUS_SET_COMPLEXITY(3));
+  opus_encoder_ctl(opus_encoder_, OPUS_SET_COMPLEXITY(0));
 
   audio_input_device_->Open(frame_rate);
 
-  xTaskCreateStatic(Loop, "Loop", kTaskStackSize, this, tskIDLE_PRIORITY, task_stack_, &task_buffer_);
+  const auto ret = xTaskCreate(&AudioInputEngine::Loop, "AudioInput", 1024 * 26, this, tskIDLE_PRIORITY + 1, nullptr);
+  assert(ret == pdPASS);
+  if (ret != pdPASS) {
+    CLOG("xTaskCreate failed: %d", ret);
+    return;
+  }
   CLOG("OK");
 }
 
@@ -48,7 +51,6 @@ AudioInputEngine::~AudioInputEngine() {
 
   audio_input_device_->Close();
   opus_encoder_destroy(opus_encoder_);
-  delete[] task_stack_;
   CLOG("OK");
 }
 
@@ -58,13 +60,11 @@ void AudioInputEngine::Loop(void* self) {
 }
 
 void AudioInputEngine::Loop() {
-  CLOG("running");
 loop_start:
   auto message = message_queue_.Recevie(false);
   if (message.has_value()) {
     switch (message->type()) {
       case MessageType::kClose: {
-        CLOG("close");
         auto sem_opt = message->Read<uintptr_t>();
         if (sem_opt.has_value()) {
           auto sem = reinterpret_cast<SemaphoreHandle_t>(*sem_opt);

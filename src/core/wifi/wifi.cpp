@@ -30,6 +30,20 @@ Wifi::Wifi() {
   ESP_ERROR_CHECK(esp_event_handler_register(IP_EVENT, ESP_EVENT_ANY_ID, &IpEventHandler, this));
   esp_netif_create_default_wifi_sta();
   wifi_init_config_t cfg = WIFI_INIT_CONFIG_DEFAULT();
+
+  cfg.static_tx_buf_num = 0;
+  cfg.dynamic_tx_buf_num = 32;
+  cfg.tx_buf_type = 1;
+
+  cfg.static_rx_buf_num = 2;
+  cfg.dynamic_rx_buf_num = 32;
+
+  cfg.cache_tx_buf_num = 1;
+
+  cfg.rx_mgmt_buf_type = 1;
+  cfg.rx_mgmt_buf_num = 1;
+  cfg.mgmt_sbuf_num = 6;
+
   ESP_ERROR_CHECK(esp_wifi_init(&cfg));
 }
 

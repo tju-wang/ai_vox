@@ -21,16 +21,15 @@
 #include <mqtt_client.h>
 
 #include "clogger/clogger.h"
-#include "display/lcd_display.h"
+// #include "display/lcd_display.h"
 #include "display/oled_display.h"
 #include "fetch_config.h"
-#include "meminfo.h"
 #include "wifi/wifi.h"
 
 LV_FONT_DECLARE(font_puhui_14_1);
-LV_FONT_DECLARE(font_puhui_16_4);
+// LV_FONT_DECLARE(font_puhui_16_4);
 LV_FONT_DECLARE(font_awesome_14_1);
-LV_FONT_DECLARE(font_awesome_16_4);
+// LV_FONT_DECLARE(font_awesome_16_4);
 
 namespace ai_vox {
 
@@ -119,7 +118,7 @@ void EngineImpl::Start(std::shared_ptr<AudioInputDevice> audio_input_device, std
     ConnectMqtt();
   }
 
-  auto ret = xTaskCreate(Loop, "Loop", 4096 * 4, this, tskIDLE_PRIORITY, nullptr);
+  auto ret = xTaskCreate(Loop, "AiVoxMain", 1024 * 4, this, tskIDLE_PRIORITY + 1, nullptr);
   assert(ret == pdPASS);
 }
 
@@ -617,14 +616,18 @@ bool EngineImpl::ConnectMqtt() {
   mqtt_config.credentials.authentication.password = config.mqtt.password.c_str();
   mqtt_config.session.keepalive = 90;
 
-  CLOG("mqtt_config.broker.address.hostname: %s", mqtt_config.broker.address.hostname);
-  CLOG("mqtt_config.broker.address.port: %d", mqtt_config.broker.address.port);
-  CLOG("mqtt_config.broker.address.transport: %d", mqtt_config.broker.address.transport);
-  CLOG("mqtt_config.broker.verification.crt_bundle_attach: %p", mqtt_config.broker.verification.crt_bundle_attach);
-  CLOG("mqtt_config.credentials.client_id: %s", mqtt_config.credentials.client_id);
-  CLOG("mqtt_config.credentials.username: %s", mqtt_config.credentials.username);
-  CLOG("mqtt_config.credentials.authentication.password: %s", mqtt_config.credentials.authentication.password);
-  CLOG("mqtt_config.session.keepalive: %d", mqtt_config.session.keepalive);
+  mqtt_config.buffer.size = 512;
+  mqtt_config.buffer.out_size = 512;
+  mqtt_config.task.stack_size = 4096;
+
+  // CLOG("mqtt_config.broker.address.hostname: %s", mqtt_config.broker.address.hostname);
+  // CLOG("mqtt_config.broker.address.port: %d", mqtt_config.broker.address.port);
+  // CLOG("mqtt_config.broker.address.transport: %d", mqtt_config.broker.address.transport);
+  // CLOG("mqtt_config.broker.verification.crt_bundle_attach: %p", mqtt_config.broker.verification.crt_bundle_attach);
+  // CLOG("mqtt_config.credentials.client_id: %s", mqtt_config.credentials.client_id);
+  // CLOG("mqtt_config.credentials.username: %s", mqtt_config.credentials.username);
+  // CLOG("mqtt_config.credentials.authentication.password: %s", mqtt_config.credentials.authentication.password);
+  // CLOG("mqtt_config.session.keepalive: %d", mqtt_config.session.keepalive);
 
   mqtt_client_ = esp_mqtt_client_init(&mqtt_config);
   auto err = esp_mqtt_client_register_event(mqtt_client_, MQTT_EVENT_ANY, &EngineImpl::OnMqttEvent, this);

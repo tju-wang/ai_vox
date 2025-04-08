@@ -1,1 +1,0 @@
-arduino-cli compile -b esp32:esp32:esp32s3 . -v  --board-options FlashSize=8M  --board-options PartitionScheme=default_8MB --board-options PSRAM=opi --build-property "build.extra_flags=-Wall -Werror"

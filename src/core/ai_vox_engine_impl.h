@@ -21,7 +21,6 @@
 #include "ai_vox_engine.h"
 #include "audio_session.h"
 #include "messaging/message_queue.h"
-#include "opus_audio_encoder.h"
 #include "wifi/wifi.h"
 
 class Display;
