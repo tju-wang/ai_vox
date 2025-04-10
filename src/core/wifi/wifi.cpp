@@ -9,20 +9,20 @@
 #include "../clogger/clogger.h"
 
 namespace {
-enum {
-  kWifiStationStated = 1 << 0,
+enum Status : EventBits_t {
+  kStationStarted = 1 << 0,
+  kWifiConnected = 1 << 1,
 };
-}
-
-Wifi* Wifi::s_instance_ = nullptr;
-std::once_flag Wifi::s_once_flag_;
+}  // namespace
 
 Wifi& Wifi::GetInstance() {
-  std::call_once(s_once_flag_, []() { s_instance_ = new Wifi(); });
-  return *s_instance_;
+  static std::once_flag s_once_flag;
+  Wifi* s_instance = nullptr;
+  std::call_once(s_once_flag, [&s_instance]() { s_instance = new Wifi(); });
+  return *s_instance;
 }
 
-Wifi::Wifi() {
+Wifi::Wifi() : event_group_(xEventGroupCreate()) {
   CLOG_TRACE();
   ESP_ERROR_CHECK(esp_netif_init());
   esp_event_loop_create_default();
@@ -38,17 +38,18 @@ Wifi::Wifi() {
   cfg.static_rx_buf_num = 2;
   cfg.dynamic_rx_buf_num = 32;
 
-  cfg.cache_tx_buf_num = 1;
+  cfg.cache_tx_buf_num = 4;
 
   cfg.rx_mgmt_buf_type = 1;
-  cfg.rx_mgmt_buf_num = 1;
-  cfg.mgmt_sbuf_num = 6;
+  cfg.rx_mgmt_buf_num = 0;
+  cfg.mgmt_sbuf_num = 10;
+
+  cfg.nano_enable = 1;
 
   ESP_ERROR_CHECK(esp_wifi_init(&cfg));
 }
 
 void Wifi::SetEventHandler(const std::function<EventHandler>& event_handler) {
-  std::lock_guard lock(mutex_);
   event_handler_ = event_handler;
 }
 
@@ -64,14 +65,12 @@ void Wifi::WifiEventHandler(esp_event_base_t event_base, int32_t event_id, void*
   switch (event_id) {
     case WIFI_EVENT_STA_START: {
       CLOG("WIFI_EVENT_STA_START");
-      //   xEventGroupSetBits(event_group_, kWifiStationStated);
-      ESP_ERROR_CHECK(esp_wifi_connect());
+      xEventGroupSetBits(event_group_, kStationStarted);
       break;
     }
     case WIFI_EVENT_STA_DISCONNECTED: {
       CLOG("WIFI_EVENT_STA_DISCONNECTED");
-      std::lock_guard lock(mutex_);
-      state_ = State::kIdle;
+      xEventGroupClearBits(event_group_, kWifiConnected);
       if (event_handler_) {
         event_handler_(Event::kDisconnected);
       }
@@ -90,8 +89,6 @@ void Wifi::IpEventHandler(esp_event_base_t event_base, int32_t event_id, void* e
       event = (ip_event_got_ip_t*)event_data;
       CLOG("IP_EVENT_STA_GOT_IP");
       CLOG("got ip:" IPSTR, IP2STR(&event->ip_info.ip));
-      std::lock_guard lock(mutex_);
-      state_ = State::kConnected;
       if (event_handler_) {
         event_handler_(Event::kConnected);
       }
@@ -104,9 +101,8 @@ void Wifi::IpEventHandler(esp_event_base_t event_base, int32_t event_id, void* e
 }
 
 void Wifi::Connect(const std::string& ssid, const std::string& password) {
-  std::lock_guard lock(mutex_);
-
-  if (state_ != State::kIdle) {
+  if (0 != (xEventGroupGetBits(event_group_) && kStationStarted)) {
+    CLOG("wifi sta already started");
     return;
   }
 
@@ -120,6 +116,19 @@ void Wifi::Connect(const std::string& ssid, const std::string& password) {
   ESP_ERROR_CHECK(esp_wifi_set_mode(WIFI_MODE_STA));
   ESP_ERROR_CHECK(esp_wifi_set_config(WIFI_IF_STA, &wifi_config));
   ESP_ERROR_CHECK(esp_wifi_start());
-  state_ = State::kConnecting;
+  xEventGroupWaitBits(event_group_, kStationStarted, pdFALSE, pdFALSE, portMAX_DELAY);
+  ESP_ERROR_CHECK(esp_wifi_connect());
   CLOG("wifi connecting");
+}
+
+bool Wifi::Reconnect() {
+  if (0 == (xEventGroupGetBits(event_group_) && kStationStarted)) {
+    CLOG("wifi sta not started");
+    return false;
+  }
+
+  ESP_ERROR_CHECK(esp_wifi_disconnect());
+  ESP_ERROR_CHECK(esp_wifi_connect());
+  CLOG("wifi reconnecting");
+  return true;
 }

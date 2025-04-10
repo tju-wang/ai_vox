@@ -103,9 +103,8 @@ void EngineImpl::Start(std::shared_ptr<AudioInputDevice> audio_input_device, std
   ESP_ERROR_CHECK(iot_button_new_gpio_device(&btn_cfg, &gpio_cfg, &button_handle_));
   ESP_ERROR_CHECK(iot_button_register_cb(button_handle_, BUTTON_SINGLE_CLICK, nullptr, OnButtonClick, this));
 
-  state_ = State::kInited;
-
   if (wifi_ssid_ && wifi_password_) {
+    state_ = State::kNetworkConnecting;
     auto &wifi = Wifi::GetInstance();
     wifi.SetEventHandler(std::bind(&EngineImpl::OnWifiEvent, this, std::placeholders::_1));
     CLOG("wifi ssid: %s", wifi_ssid_->c_str());
@@ -115,6 +114,7 @@ void EngineImpl::Start(std::shared_ptr<AudioInputDevice> audio_input_device, std
       display_->SetStatus("Wifi Connecting");
     }
   } else {
+    state_ = State::kNetworkConnected;
     ConnectMqtt();
   }
 
@@ -347,15 +347,27 @@ void EngineImpl::OnWifiEvent(const Wifi::Event event) {
 
 void EngineImpl::OnWifiConnected() {
   CLOG_TRACE();
-  if (state_ == State::kInited) {
-    ConnectMqtt();
+  if (state_ != State::kNetworkConnecting) {
+    return;
   }
+  state_ = State::kNetworkConnected;
+  ConnectMqtt();
 }
 
 void EngineImpl::OnWifiDisconnected() {
   CLOG_TRACE();
   audio_session_.reset();
-  state_ = State::kInited;
+  if (mqtt_client_ != nullptr) {
+    esp_mqtt_client_stop(mqtt_client_);
+    esp_mqtt_client_destroy(mqtt_client_);
+    mqtt_client_ = nullptr;
+  }
+
+  state_ = State::kNetworkConnecting;
+  Wifi::GetInstance().Reconnect();
+  if (display_) {
+    display_->SetStatus("Wifi Connecting");
+  }
 }
 
 void EngineImpl::Loop() {
@@ -367,7 +379,7 @@ loop_start:
   switch (message->type()) {
     case MessageType::kOnButtonClick: {
       CLOG("kOnButtonClick");
-      if (state_ == State::kInited) {
+      if (state_ == State::kNetworkConnected) {
         ConnectMqtt();
       } else if (state_ == State::kMqttConnected) {
         OpenAudioSession();
@@ -411,8 +423,13 @@ loop_start:
       if (mqtt_client_ != nullptr) {
         esp_mqtt_client_reconnect(mqtt_client_);
         state_ = State::kMqttConnecting;
+        if (display_) {
+          display_->SetStatus("Mqtt Connecting");
+          display_->SetEmotion("neutral");
+          display_->SetChatMessage("system", "");
+        }
       } else {
-        state_ = State::kInited;
+        state_ = State::kNetworkConnected;
         ConnectMqtt();
       }
       break;
@@ -485,11 +502,13 @@ void EngineImpl::OpenAudioSession() {
   cJSON_AddNumberToObject(audio_params, "frame_duration", 60);
   cJSON_AddItemToObject(message, "audio_params", audio_params);
 
-  std::string text(cJSON_PrintUnformatted(message));
+  auto text = cJSON_PrintUnformatted(message);
+
+  CLOG("esp_mqtt_client_publish %s, %s", mqtt_publish_topic_.c_str(), text);
+  auto err = esp_mqtt_client_publish(mqtt_client_, mqtt_publish_topic_.c_str(), text, strlen(text), 0, 0);
+  cJSON_free(text);
   cJSON_Delete(message);
 
-  CLOG("esp_mqtt_client_publish %s, %s", mqtt_publish_topic_.c_str(), text.c_str());
-  auto err = esp_mqtt_client_publish(mqtt_client_, mqtt_publish_topic_.c_str(), text.data(), text.size(), 0, 0);
   CLOG("esp_mqtt_client_publish err:%d", err);
   state_ = State::kAudioSessionOpening;
   if (display_) {
@@ -520,9 +539,10 @@ void EngineImpl::CloseAudioSession() {
   auto const message = cJSON_CreateObject();
   cJSON_AddStringToObject(message, "session_id", audio_session_->session_id().c_str());
   cJSON_AddStringToObject(message, "type", "goodbye");
-  std::string text(cJSON_PrintUnformatted(message));
+  auto text = cJSON_PrintUnformatted(message);
+  esp_mqtt_client_publish(mqtt_client_, mqtt_publish_topic_.c_str(), text, strlen(text), 0, 0);
+  cJSON_free(text);
   cJSON_Delete(message);
-  esp_mqtt_client_publish(mqtt_client_, mqtt_publish_topic_.c_str(), text.data(), text.size(), 0, 0);
   audio_session_.reset();
   state_ = State::kMqttConnected;
 
@@ -542,9 +562,10 @@ void EngineImpl::AbortSpeaking() {
   auto const message = cJSON_CreateObject();
   cJSON_AddStringToObject(message, "session_id", audio_session_->session_id().c_str());
   cJSON_AddStringToObject(message, "type", "abort");
-  std::string text(cJSON_PrintUnformatted(message));
+  auto text = cJSON_PrintUnformatted(message);
+  esp_mqtt_client_publish(mqtt_client_, mqtt_publish_topic_.c_str(), text, strlen(text), 0, 0);
+  cJSON_free(text);
   cJSON_Delete(message);
-  esp_mqtt_client_publish(mqtt_client_, mqtt_publish_topic_.c_str(), text.data(), text.size(), 0, 0);
   CLOG("OK");
 }
 
@@ -558,10 +579,10 @@ void EngineImpl::StartAudioTransmission() {
   cJSON_AddStringToObject(root, "type", "listen");
   cJSON_AddStringToObject(root, "state", "start");
   cJSON_AddStringToObject(root, "mode", "auto");
-  std::string json(cJSON_PrintUnformatted(root));
+  auto text = cJSON_PrintUnformatted(root);
+  auto err = esp_mqtt_client_publish(mqtt_client_, mqtt_publish_topic_.c_str(), text, strlen(text), 0, 0);
+  cJSON_free(text);
   cJSON_Delete(root);
-
-  auto err = esp_mqtt_client_publish(mqtt_client_, mqtt_publish_topic_.c_str(), json.data(), json.size(), 0, 0);
   audio_session_->CloseAudioOutput();
   audio_session_->OpenAudioInput(audio_input_device_);
   if (display_) {
@@ -572,7 +593,8 @@ void EngineImpl::StartAudioTransmission() {
 
 bool EngineImpl::ConnectMqtt() {
   CLOG("state: %u", state_);
-  if (state_ != State::kInited) {
+  if (state_ != State::kNetworkConnected) {
+    CLOG("invalid state: %u", state_);
     return false;
   }
 
@@ -647,4 +669,5 @@ bool EngineImpl::ConnectMqtt() {
   CLOG_TRACE();
   return true;
 }
+
 }  // namespace ai_vox

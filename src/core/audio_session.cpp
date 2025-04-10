@@ -158,6 +158,9 @@ void AudioSession::RecevieLoop() {
     int ret = recv(udp_fd_, data.data(), data.size(), 0);
     if (ret < 0) {
       xSemaphoreGive(sem_);
+#if 0
+      CLOG("uxTaskGetStackHighWaterMark: %d", uxTaskGetStackHighWaterMark(nullptr));
+#endif
       return;
     }
     data.resize(ret);
@@ -172,7 +175,7 @@ void AudioSession::RecevieLoop() {
     uint32_t sequence = ntohl(*(uint32_t*)&data[12]);
 
     if (expected_sequence_ != sequence) {
-      CLOG("sequence mismatch. expected sequence_: %u, sequence: %u, dropped: %" PRId64,
+      CLOG("sequence mismatch. expected sequence_: %u, sequence: %u, gap: %" PRId64,
            expected_sequence_,
            sequence,
            static_cast<int64_t>(sequence) - static_cast<int64_t>(expected_sequence_));

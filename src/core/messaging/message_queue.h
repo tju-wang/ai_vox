@@ -52,6 +52,11 @@ class MessageQueue {
     cv_.notify_all();
   }
 
+  size_t Size() {
+    std::lock_guard<std::mutex> lock(mutex_);
+    return message_queue_.size();
+  }
+
  private:
   std::mutex mutex_;
   std::condition_variable cv_;

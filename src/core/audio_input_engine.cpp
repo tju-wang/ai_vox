@@ -56,6 +56,7 @@ AudioInputEngine::~AudioInputEngine() {
 
 void AudioInputEngine::Loop(void* self) {
   reinterpret_cast<AudioInputEngine*>(self)->Loop();
+  CLOG("uxTaskGetStackHighWaterMark: %d", uxTaskGetStackHighWaterMark(nullptr));
   vTaskDelete(nullptr);
 }
 

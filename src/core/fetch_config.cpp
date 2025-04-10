@@ -139,7 +139,9 @@ std::string Json2() {
   cJSON_AddStringToObject(board_json, "mac", GetMacAddress().c_str());
   cJSON_AddItemToObject(root, "board", board_json);
 #endif
-  std::string json(cJSON_Print(root));
+  auto text = cJSON_PrintUnformatted(root);
+  std::string json(text);
+  cJSON_free(text);
   cJSON_Delete(root);
   return json;
 }

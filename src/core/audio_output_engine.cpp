@@ -70,6 +70,16 @@ void AudioOutputEngine::Write(std::vector<uint8_t>&& data) {
   Message message(MessageType::kData);
   message.Write(std::make_shared<std::vector<uint8_t>>(std::move(data)));
   message_queue_.Send(std::move(message));
+#if 0  // debug
+  static size_t s_max_size = 0;
+  const auto message_queue_size = message_queue_.Size();
+  if (message_queue_size > s_max_size) {
+    CLOG("message queue size: %zu", message_queue_size);
+    CLOG("max message queue size: %zu", s_max_size);
+    CLOG("stack high water mark: %d", uxTaskGetStackHighWaterMark(nullptr));
+    s_max_size = message_queue_size;
+  }
+#endif
 }
 
 void AudioOutputEngine::NotifyDataEnd() {
@@ -83,6 +93,9 @@ void AudioOutputEngine::NotifyDataEnd() {
 
 void AudioOutputEngine::Loop(void* self) {
   reinterpret_cast<AudioOutputEngine*>(self)->Loop();
+#if 0
+  CLOG("uxTaskGetStackHighWaterMark: %d", uxTaskGetStackHighWaterMark(nullptr));
+#endif
   vTaskDelete(nullptr);
 }
 

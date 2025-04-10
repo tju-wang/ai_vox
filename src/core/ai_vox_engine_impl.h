@@ -46,7 +46,8 @@ class EngineImpl : public Engine {
  private:
   enum class State {
     kIdle,
-    kInited,
+    kNetworkConnecting,
+    kNetworkConnected,
     kMqttConnecting,
     kMqttConnected,
     kAudioSessionOpening,
