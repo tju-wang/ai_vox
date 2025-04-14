@@ -28,8 +28,8 @@ bool I2sStdAudioInputDevice::Open(uint32_t sample_rate) {
       .id = I2S_NUM_0,
       .role = I2S_ROLE_MASTER,
       .dma_desc_num = 2,
-      .dma_frame_num = 480,
-      .auto_clear_after_cb = false,
+      .dma_frame_num = 320,
+      .auto_clear_after_cb = true,
       .auto_clear_before_cb = false,
       .intr_priority = 0,
   };

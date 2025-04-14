@@ -53,13 +53,21 @@ class Message {
 
   template <typename U>
   Message& Write(U&& value) {
-    static_assert(std::is_constructible_v<Payload, std::decay_t<U>>, "Unsupported payload type");
-
     if (!payloads_) {
       payloads_.emplace();
     }
 
-    payloads_->emplace_back(std::forward<U>(value));
+    using DecayU = std::decay_t<U>;
+
+    if constexpr (std::is_enum_v<DecayU>) {
+      using Underlying = std::underlying_type_t<DecayU>;
+      static_assert(std::is_constructible_v<Payload, Underlying>, "Enum's underlying type not in Payload");
+      payloads_->emplace_back(static_cast<Underlying>(std::forward<U>(value)));
+    } else {
+      static_assert(std::is_constructible_v<Payload, DecayU>, "Unsupported payload type");
+      payloads_->emplace_back(std::forward<U>(value));
+    }
+
     return *this;
   }
 
@@ -74,16 +82,27 @@ class Message {
 
   template <typename T>
   auto Read() -> std::enable_if_t<!IsSharedPtrV<T>, std::optional<T>> {
-    static_assert(std::is_constructible_v<Payload, T>, "Type T is not supported in Payload");
-
     if (!payloads_ || payloads_->empty()) {
       return std::nullopt;
     }
 
-    if (auto* ptr = std::get_if<T>(&payloads_->front())) {
-      T value = std::move(*ptr);
-      payloads_->pop_front();
-      return value;
+    using DecayT = std::decay_t<T>;
+
+    if constexpr (std::is_enum_v<DecayT>) {
+      using Underlying = std::underlying_type_t<DecayT>;
+      static_assert(std::is_constructible_v<Payload, Underlying>, "Enum's underlying type not in Payload");
+      if (auto* ptr = std::get_if<Underlying>(&payloads_->front())) {
+        Underlying value = *ptr;
+        payloads_->pop_front();
+        return static_cast<T>(value);
+      }
+    } else {
+      static_assert(std::is_constructible_v<Payload, DecayT>, "Type T is not supported in Payload");
+      if (auto* ptr = std::get_if<DecayT>(&payloads_->front())) {
+        DecayT value = std::move(*ptr);
+        payloads_->pop_front();
+        return value;
+      }
     }
 
     return std::nullopt;

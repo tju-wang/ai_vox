@@ -1,0 +1,179 @@
+#include <WiFi.h>
+
+#include "ai_vox_engine.h"
+#include "ai_vox_observer.h"
+#include "i2s_std_audio_input_device.h"
+#include "i2s_std_audio_output_device.h"
+
+namespace {
+constexpr char kWifiSsid[] = "emakefun";
+constexpr char kWifiPassword[] = "501416wf";
+
+#if defined(ARDUINO_ESP32_DEV)
+constexpr gpio_num_t kMicPinBclk = GPIO_NUM_25;
+constexpr gpio_num_t kMicPinWs = GPIO_NUM_26;
+constexpr gpio_num_t kMicPinDin = GPIO_NUM_27;
+
+constexpr gpio_num_t kSpeakerPinBclk = GPIO_NUM_33;
+constexpr gpio_num_t kSpeakerPinWs = GPIO_NUM_32;
+constexpr gpio_num_t kSpeakerPinDout = GPIO_NUM_23;
+
+constexpr gpio_num_t kTriggerPin = GPIO_NUM_34;
+#elif defined(ARDUINO_ESP32S3_DEV)
+constexpr gpio_num_t kMicPinBclk = GPIO_NUM_5;
+constexpr gpio_num_t kMicPinWs = GPIO_NUM_2;
+constexpr gpio_num_t kMicPinDin = GPIO_NUM_4;
+
+constexpr gpio_num_t kSpeakerPinBclk = GPIO_NUM_13;
+constexpr gpio_num_t kSpeakerPinWs = GPIO_NUM_14;
+constexpr gpio_num_t kSpeakerPinDout = GPIO_NUM_1;
+
+constexpr gpio_num_t kTriggerPin = GPIO_NUM_0;
+#endif
+
+auto g_observer = std::make_shared<ai_vox::Observer>();
+
+std::string RoleToString(const ai_vox::Engine::Role role) {
+  switch (role) {
+    case ai_vox::Engine::Role::kAssistant:
+      return "assistant";
+    case ai_vox::Engine::Role::kUser:
+      return "user";
+  }
+  return "unknown";
+}
+
+std::string EngineStateToString(const ai_vox::Engine::State state) {
+  switch (state) {
+    case ai_vox::Engine::State::kIdle:
+      return "idle";
+    case ai_vox::Engine::State::kInited:
+      return "inited";
+    case ai_vox::Engine::State::kMqttConnecting:
+      return "mqtt connecting";
+    case ai_vox::Engine::State::kMqttConnected:
+      return "mqtt connected";
+    case ai_vox::Engine::State::kAudioSessionOpening:
+      return "audio session opening";
+    case ai_vox::Engine::State::kListening:
+      return "listening";
+    case ai_vox::Engine::State::kSpeaking:
+      return "speaking";
+  }
+  return "unknown";
+}
+
+void PrintMemInfo() {
+  if (heap_caps_get_total_size(MALLOC_CAP_SPIRAM) > 0) {
+    const auto total_size = heap_caps_get_total_size(MALLOC_CAP_SPIRAM);
+    const auto free_size = heap_caps_get_free_size(MALLOC_CAP_SPIRAM);
+    const auto min_free_size = heap_caps_get_minimum_free_size(MALLOC_CAP_SPIRAM);
+    printf("SPIRAM total size: %zu B (%zu KB), free size: %zu B (%zu KB), minimum free size: %zu B (%zu KB)\n",
+           total_size,
+           total_size >> 10,
+           free_size,
+           free_size >> 10,
+           min_free_size,
+           min_free_size >> 10);
+  }
+
+  if (heap_caps_get_total_size(MALLOC_CAP_INTERNAL) > 0) {
+    const auto total_size = heap_caps_get_total_size(MALLOC_CAP_INTERNAL);
+    const auto free_size = heap_caps_get_free_size(MALLOC_CAP_INTERNAL);
+    const auto min_free_size = heap_caps_get_minimum_free_size(MALLOC_CAP_INTERNAL);
+    printf("IRAM total size: %zu B (%zu KB), free size: %zu B (%zu KB), minimum free size: %zu B (%zu KB)\n",
+           total_size,
+           total_size >> 10,
+           free_size,
+           free_size >> 10,
+           min_free_size,
+           min_free_size >> 10);
+  }
+
+  if (heap_caps_get_total_size(MALLOC_CAP_DEFAULT) > 0) {
+    const auto total_size = heap_caps_get_total_size(MALLOC_CAP_DEFAULT);
+    const auto free_size = heap_caps_get_free_size(MALLOC_CAP_DEFAULT);
+    const auto min_free_size = heap_caps_get_minimum_free_size(MALLOC_CAP_DEFAULT);
+    printf("DRAM total size: %zu B (%zu KB), free size: %zu B (%zu KB), minimum free size: %zu B (%zu KB)\n",
+           total_size,
+           total_size >> 10,
+           free_size,
+           free_size >> 10,
+           min_free_size,
+           min_free_size >> 10);
+  }
+}
+
+}  // namespace
+
+void setup() {
+  Serial.begin(115200);
+
+  if (heap_caps_get_total_size(MALLOC_CAP_SPIRAM) > 0) {
+    WiFi.useStaticBuffers(true);
+  } else {
+    WiFi.useStaticBuffers(false);
+  }
+
+  WiFi.begin(kWifiSsid, kWifiPassword);
+
+  while (WiFi.status() != WL_CONNECTED) {
+    printf("Connecting to WiFi, ssid: %s, password: %s\n", kWifiSsid, kWifiPassword);
+    delay(1000);
+  }
+
+  printf("WiFi connected, IP address: %s\n", WiFi.localIP().toString().c_str());
+
+  auto audio_input_device = std::make_shared<ai_vox::I2sStdAudioInputDevice>(kMicPinBclk, kMicPinWs, kMicPinDin);
+  auto audio_output_device = std::make_shared<ai_vox::I2sStdAudioOutputDevice>(kSpeakerPinBclk, kSpeakerPinWs, kSpeakerPinDout);
+
+  auto& ai_vox_engine = ai_vox::Engine::GetInstance();
+  ai_vox_engine.SetObserver(g_observer);
+  ai_vox_engine.SetTrigger(kTriggerPin);
+  ai_vox_engine.Start(audio_input_device, audio_output_device);
+}
+
+void loop() {
+#ifdef PRINT_HEAP_INFO_INTERVAL
+  static uint32_t s_print_heap_info_time = 0;
+  if (s_print_heap_info_time == 0 || millis() - s_print_heap_info_time >= PRINT_HEAP_INFO_INTERVAL) {
+    s_print_heap_info_time = millis();
+    PrintMemInfo();
+  }
+#endif
+
+  auto events = g_observer->PopEvents();
+  for (auto& event : events) {
+    if (auto activation_event = std::get_if<ai_vox::Observer::ActivationEvent>(&event)) {
+      printf("activation code: %s, message: %s\n", activation_event->code.c_str(), activation_event->message.c_str());
+    } else if (auto state_changed_event = std::get_if<ai_vox::Observer::StateChangedEvent>(&event)) {
+      printf("state changed from %s to %s\n",
+             EngineStateToString(state_changed_event->old_state).c_str(),
+             EngineStateToString(state_changed_event->new_state).c_str());
+      switch (state_changed_event->new_state) {
+        case ai_vox::Engine::State::kMqttConnecting: {
+          break;
+        }
+        case ai_vox::Engine::State::kMqttConnected: {
+          break;
+        }
+        case ai_vox::Engine::State::kAudioSessionOpening: {
+          break;
+        }
+        case ai_vox::Engine::State::kListening: {
+          break;
+        }
+        case ai_vox::Engine::State::kSpeaking: {
+          break;
+        }
+        default: {
+          break;
+        }
+      }
+    } else if (auto emotion_event = std::get_if<ai_vox::Observer::EmotionEvent>(&event)) {
+      printf("emotion: %s\n", emotion_event->emotion.c_str());
+    } else if (auto chat_message_event = std::get_if<ai_vox::Observer::ChatMessageEvent>(&event)) {
+      printf("role: %s, content: %s\n", RoleToString(chat_message_event->role).c_str(), chat_message_event->content.c_str());
+    }
+  }
+}

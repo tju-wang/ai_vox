@@ -13,6 +13,9 @@
 #include <string>
 #include <vector>
 
+#ifndef CLOGGER_SEVERITY
+#define CLOGGER_SEVERITY CLOGGER_SEVERITY_WARN
+#endif
 #include "clogger/clogger.h"
 
 #define CONFIG_OTA_VERSION_URL "https://api.tenclass.net/xiaozhi/ota/"
@@ -149,7 +152,7 @@ std::string Json2() {
 }  // namespace
 
 Config GetConfigFromServer() {
-  CLOG_TRACE();
+  CLOGI();
   Config config;
   esp_http_client_config_t http_client_config = {
       .url = "https://api.tenclass.net/xiaozhi/ota/",

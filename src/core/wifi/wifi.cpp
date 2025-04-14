@@ -23,7 +23,6 @@ Wifi& Wifi::GetInstance() {
 }
 
 Wifi::Wifi() : event_group_(xEventGroupCreate()) {
-  CLOG_TRACE();
   ESP_ERROR_CHECK(esp_netif_init());
   esp_event_loop_create_default();
   ESP_ERROR_CHECK(esp_event_handler_register(WIFI_EVENT, ESP_EVENT_ANY_ID, &WifiEventHandler, this));

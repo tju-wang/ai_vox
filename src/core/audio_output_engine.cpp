@@ -1,6 +1,10 @@
 #include "audio_output_engine.h"
 
+#ifndef CLOGGER_SEVERITY
+#define CLOGGER_SEVERITY CLOGGER_SEVERITY_WARN
+#endif
 #include "clogger/clogger.h"
+
 #ifdef ARDUINO
 #include "libopus/opus.h"
 #else
@@ -21,14 +25,15 @@ void AudioOutputEngine::Open(std::shared_ptr<ai_vox::AudioOutputDevice> audio_ou
   }
   uint32_t sample_rate = 24000;
   uint32_t channels = 1;
-  uint32_t duration_ms = 60;
+  uint32_t duration_ms = 20;
   frame_size_ = sample_rate / 1000 * channels * duration_ms;
 
   int error = -1;
   opus_decoder_ = opus_decoder_create(sample_rate, channels, &error);
   assert(opus_decoder_ != nullptr);
 
-  const auto ret = xTaskCreate(&AudioOutputEngine::Loop, "AudioOutput", 1024 * 10, this, tskIDLE_PRIORITY + 1, nullptr);
+  const uint32_t task_heap_size = heap_caps_get_total_size(MALLOC_CAP_SPIRAM) == 0 ? 1024 * 9 : 1024 * 15;
+  const auto ret = xTaskCreate(&AudioOutputEngine::Loop, "AudioOutput", task_heap_size, this, tskIDLE_PRIORITY + 1, nullptr);
   assert(ret == pdPASS);
   if (ret != pdPASS) {
     CLOG("xTaskCreate failed: %d", ret);
@@ -83,7 +88,7 @@ void AudioOutputEngine::Write(std::vector<uint8_t>&& data) {
 }
 
 void AudioOutputEngine::NotifyDataEnd() {
-  CLOG_TRACE();
+  CLOGI();
   std::lock_guard lock(mutex_);
   if (state_ == State::kIdle) {
     return;
@@ -93,9 +98,7 @@ void AudioOutputEngine::NotifyDataEnd() {
 
 void AudioOutputEngine::Loop(void* self) {
   reinterpret_cast<AudioOutputEngine*>(self)->Loop();
-#if 0
-  CLOG("uxTaskGetStackHighWaterMark: %d", uxTaskGetStackHighWaterMark(nullptr));
-#endif
+  CLOGD("uxTaskGetStackHighWaterMark: %d", uxTaskGetStackHighWaterMark(nullptr));
   vTaskDelete(nullptr);
 }
 

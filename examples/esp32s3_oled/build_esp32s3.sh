@@ -1,1 +1,0 @@
-arduino-cli compile -b esp32:esp32:esp32s3 . -v --board-options "PartitionScheme=huge_app" --board-options "PSRAM=opi" --build-property "build.extra_flags=-Wall -Werror"

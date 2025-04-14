@@ -34,7 +34,6 @@ class Wifi {
 
   std::function<EventHandler> event_handler_;
   EventGroupHandle_t event_group_ = nullptr;
-
 };
 
 #endif

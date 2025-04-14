@@ -1,1 +1,0 @@
-arduino-cli compile -b esp32:esp32:esp32 . -v --board-options PartitionScheme=huge_app --build-property "build.extra_flags=-Wall -Werror"

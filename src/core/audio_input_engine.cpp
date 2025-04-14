@@ -3,6 +3,10 @@
 #include <freertos/FreeRTOS.h>
 #include <freertos/task.h>
 
+#ifndef CLOGGER_SEVERITY
+#define CLOGGER_SEVERITY CLOGGER_SEVERITY_WARN
+#endif
+
 #include "clogger/clogger.h"
 
 #ifdef ARDUINO
@@ -13,6 +17,7 @@
 
 namespace {
 constexpr size_t kMaxOpusPacketSize = 1500;
+constexpr uint32_t kFrameDuration = 20;  // ms
 }  // namespace
 
 AudioInputEngine::AudioInputEngine(std::shared_ptr<ai_vox::AudioInputDevice> audio_input_device, const AudioInputEngine::DataHandler& handler)
@@ -29,13 +34,15 @@ AudioInputEngine::AudioInputEngine(std::shared_ptr<ai_vox::AudioInputDevice> aud
 
   opus_encoder_ctl(opus_encoder_, OPUS_SET_DTX(1));
   opus_encoder_ctl(opus_encoder_, OPUS_SET_COMPLEXITY(0));
+  opus_encoder_ctl(opus_encoder_, OPUS_SET_BITRATE(8000));
 
   audio_input_device_->Open(frame_rate);
-
-  const auto ret = xTaskCreate(&AudioInputEngine::Loop, "AudioInput", 1024 * 26, this, tskIDLE_PRIORITY + 1, nullptr);
+  const uint32_t task_heap_size = heap_caps_get_total_size(MALLOC_CAP_SPIRAM) == 0 ? 1024 * 18 : 1024 * 25;
+  const auto ret = xTaskCreate(&AudioInputEngine::Loop, "AudioInput", task_heap_size, this, tskIDLE_PRIORITY + 1, nullptr);
   assert(ret == pdPASS);
   if (ret != pdPASS) {
-    CLOG("xTaskCreate failed: %d", ret);
+    CLOGE("xTaskCreate failed: %d", ret);
+    abort();
     return;
   }
   CLOG("OK");
@@ -56,7 +63,7 @@ AudioInputEngine::~AudioInputEngine() {
 
 void AudioInputEngine::Loop(void* self) {
   reinterpret_cast<AudioInputEngine*>(self)->Loop();
-  CLOG("uxTaskGetStackHighWaterMark: %d", uxTaskGetStackHighWaterMark(nullptr));
+  CLOGD("uxTaskGetStackHighWaterMark: %d", uxTaskGetStackHighWaterMark(nullptr));
   vTaskDelete(nullptr);
 }
 
@@ -75,7 +82,7 @@ loop_start:
       }
     }
   } else {
-    auto pcm = audio_input_device_->Read(16000 / 1000 * 60);
+    auto pcm = audio_input_device_->Read(16000 / 1000 * kFrameDuration);
     std::vector<uint8_t> data(kMaxOpusPacketSize);
     const auto ret = opus_encode(opus_encoder_, pcm.data(), pcm.size(), data.data(), data.size());
     if (ret > 0) {

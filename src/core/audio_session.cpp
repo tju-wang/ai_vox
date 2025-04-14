@@ -9,6 +9,10 @@
 
 #include "audio_input_engine.h"
 #include "audio_output_engine.h"
+
+#ifndef CLOGGER_SEVERITY
+#define CLOGGER_SEVERITY CLOGGER_SEVERITY_WARN
+#endif
 #include "clogger/clogger.h"
 
 namespace {
@@ -100,7 +104,7 @@ bool AudioSession::Open() {
 
   sem_ = xSemaphoreCreateBinary();
 
-  const auto task_create_ret = xTaskCreate(RecevieLoop, "RecevieLoop", 1024 * 2, this, tskIDLE_PRIORITY, nullptr);
+  const auto task_create_ret = xTaskCreate(RecevieLoop, "RecevieLoop", 1024 * 3, this, tskIDLE_PRIORITY, nullptr);
   assert(task_create_ret == pdPASS);
   return true;
 }
@@ -175,7 +179,7 @@ void AudioSession::RecevieLoop() {
     uint32_t sequence = ntohl(*(uint32_t*)&data[12]);
 
     if (expected_sequence_ != sequence) {
-      CLOG("sequence mismatch. expected sequence_: %u, sequence: %u, gap: %" PRId64,
+      CLOGW("sequence mismatch. expected sequence_: %u, sequence: %u, gap: %" PRId64,
            expected_sequence_,
            sequence,
            static_cast<int64_t>(sequence) - static_cast<int64_t>(expected_sequence_));
@@ -221,7 +225,7 @@ void AudioSession::OnTransmit(std::vector<uint8_t>&& data) {
 
   auto ret = send(udp_fd_, encrypted.data(), encrypted.size(), 0);
   if (ret <= 0) {
-    CLOG("send faied. Error:%s (%d)", strerror(ret), ret);
+    CLOGE("send faied. Error:%s (%d)", strerror(ret), ret);
     return;
   }
 
