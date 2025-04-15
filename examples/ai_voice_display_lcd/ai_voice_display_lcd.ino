@@ -7,9 +7,9 @@
 
 #include "ai_vox_engine.h"
 #include "ai_vox_observer.h"
+#include "display.h"
 #include "i2s_std_audio_input_device.h"
 #include "i2s_std_audio_output_device.h"
-#include "display.h"
 
 #ifndef WIFI_SSID
 #define WIFI_SSID "ssid"
@@ -158,6 +158,12 @@ void setup() {
   InitDisplay();
 
   g_display->ShowStatus("Wifi connecting...");
+
+  if (heap_caps_get_total_size(MALLOC_CAP_SPIRAM) > 0) {
+    WiFi.useStaticBuffers(true);
+  } else {
+    WiFi.useStaticBuffers(false);
+  }
 
   WiFi.begin(WIFI_SSID, WIFI_PASSWORD);
   while (WiFi.status() != WL_CONNECTED) {

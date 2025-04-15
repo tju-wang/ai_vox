@@ -159,6 +159,12 @@ void setup() {
 
   g_display->ShowStatus("Wifi connecting...");
 
+  if (heap_caps_get_total_size(MALLOC_CAP_SPIRAM) > 0) {
+    WiFi.useStaticBuffers(true);
+  } else {
+    WiFi.useStaticBuffers(false);
+  }
+
   WiFi.begin(WIFI_SSID, WIFI_PASSWORD);
   while (WiFi.status() != WL_CONNECTED) {
     delay(1000);
