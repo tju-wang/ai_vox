@@ -5,10 +5,15 @@
 #include "i2s_std_audio_input_device.h"
 #include "i2s_std_audio_output_device.h"
 
-namespace {
-constexpr char kWifiSsid[] = "emakefun";
-constexpr char kWifiPassword[] = "501416wf";
+#ifndef WIFI_SSID
+#define WIFI_SSID "ssid"
+#endif
 
+#ifndef WIFI_PASSWORD
+#define WIFI_PASSWORD "password"
+#endif
+
+namespace {
 #if defined(ARDUINO_ESP32_DEV)
 constexpr gpio_num_t kMicPinBclk = GPIO_NUM_25;
 constexpr gpio_num_t kMicPinWs = GPIO_NUM_26;
@@ -95,10 +100,10 @@ void setup() {
     WiFi.useStaticBuffers(false);
   }
 
-  WiFi.begin(kWifiSsid, kWifiPassword);
+  WiFi.begin(WIFI_SSID, WIFI_PASSWORD);
 
   while (WiFi.status() != WL_CONNECTED) {
-    printf("Connecting to WiFi, ssid: %s, password: %s\n", kWifiSsid, kWifiPassword);
+    printf("Connecting to WiFi, ssid: %s, password: %s\n", WIFI_SSID, WIFI_PASSWORD);
     delay(1000);
   }
 
