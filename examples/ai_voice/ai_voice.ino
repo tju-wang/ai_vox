@@ -33,32 +33,12 @@ constexpr gpio_num_t kTriggerPin = GPIO_NUM_0;
 
 auto g_observer = std::make_shared<ai_vox::Observer>();
 
-std::string RoleToString(const ai_vox::Engine::Role role) {
+std::string RoleToString(const ai_vox::ChatRole role) {
   switch (role) {
-    case ai_vox::Engine::Role::kAssistant:
+    case ai_vox::ChatRole::kAssistant:
       return "assistant";
-    case ai_vox::Engine::Role::kUser:
+    case ai_vox::ChatRole::kUser:
       return "user";
-  }
-  return "unknown";
-}
-
-std::string EngineStateToString(const ai_vox::Engine::State state) {
-  switch (state) {
-    case ai_vox::Engine::State::kIdle:
-      return "idle";
-    case ai_vox::Engine::State::kInited:
-      return "inited";
-    case ai_vox::Engine::State::kMqttConnecting:
-      return "mqtt connecting";
-    case ai_vox::Engine::State::kMqttConnected:
-      return "mqtt connected";
-    case ai_vox::Engine::State::kAudioSessionOpening:
-      return "audio session opening";
-    case ai_vox::Engine::State::kListening:
-      return "listening";
-    case ai_vox::Engine::State::kSpeaking:
-      return "speaking";
   }
   return "unknown";
 }
@@ -142,28 +122,35 @@ void loop() {
   }
 #endif
 
-  auto events = g_observer->PopEvents();
+  const auto events = g_observer->PopEvents();
   for (auto& event : events) {
     if (auto activation_event = std::get_if<ai_vox::Observer::ActivationEvent>(&event)) {
       printf("activation code: %s, message: %s\n", activation_event->code.c_str(), activation_event->message.c_str());
     } else if (auto state_changed_event = std::get_if<ai_vox::Observer::StateChangedEvent>(&event)) {
-      printf("state changed from %s to %s\n",
-             EngineStateToString(state_changed_event->old_state).c_str(),
-             EngineStateToString(state_changed_event->new_state).c_str());
+      printf("state changed from %u to %u\n", state_changed_event->old_state, state_changed_event->new_state);
       switch (state_changed_event->new_state) {
-        case ai_vox::Engine::State::kMqttConnecting: {
+        case ai_vox::ChatState::kIdle: {
+          printf("Idle\n");
           break;
         }
-        case ai_vox::Engine::State::kMqttConnected: {
+        case ai_vox::ChatState::kIniting: {
+          printf("Initing...\n");
           break;
         }
-        case ai_vox::Engine::State::kAudioSessionOpening: {
+        case ai_vox::ChatState::kStandby: {
+          printf("Standby\n");
           break;
         }
-        case ai_vox::Engine::State::kListening: {
+        case ai_vox::ChatState::kConnecting: {
+          printf("Connecting...\n");
           break;
         }
-        case ai_vox::Engine::State::kSpeaking: {
+        case ai_vox::ChatState::kListening: {
+          printf("Listening...\n");
+          break;
+        }
+        case ai_vox::ChatState::kSpeaking: {
+          printf("Speaking...\n");
           break;
         }
         default: {
@@ -173,7 +160,18 @@ void loop() {
     } else if (auto emotion_event = std::get_if<ai_vox::Observer::EmotionEvent>(&event)) {
       printf("emotion: %s\n", emotion_event->emotion.c_str());
     } else if (auto chat_message_event = std::get_if<ai_vox::Observer::ChatMessageEvent>(&event)) {
-      printf("role: %s, content: %s\n", RoleToString(chat_message_event->role).c_str(), chat_message_event->content.c_str());
+      switch (chat_message_event->role) {
+        case ai_vox::ChatRole::kAssistant: {
+          printf("role: assistant, content: %s\n", chat_message_event->content.c_str());
+          break;
+        }
+        case ai_vox::ChatRole::kUser: {
+          printf("role: user, content: %s\n", chat_message_event->content.c_str());
+          break;
+        }
+      }
     }
   }
+
+  taskYIELD();
 }

@@ -1,1 +1,1 @@
-arduino-cli compile -b esp32:esp32:esp32s3 . -v --board-options "PartitionScheme=huge_app" --board-options "PSRAM=opi" -build-property "build.extra_flags=-Wall -Werror -DPRINT_HEAP_INFO_INTERVAL=1000 -DCLOGGER_SEVERITY=CLOGGER_SEVERITY_WARN"
+arduino-cli compile -b esp32:esp32:esp32s3 . -v --board-options "PartitionScheme=huge_app" --board-options "PSRAM=opi" --build-property "build.extra_flags=-Wall -Werror -DPRINT_HEAP_INFO_INTERVAL=10000 -DCLOGGER_SEVERITY=CLOGGER_SEVERITY_WARN"

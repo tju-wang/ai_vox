@@ -34,9 +34,18 @@ class EngineImpl : public Engine {
   void SetObserver(std::shared_ptr<Observer> observer) override;
   void SetTrigger(const gpio_num_t gpio) override;
   void Start(std::shared_ptr<AudioInputDevice> audio_input_device, std::shared_ptr<AudioOutputDevice> audio_output_device) override;
-  State state() const override;
 
  private:
+  enum class State {
+    kIdle,
+    kInited,
+    kMqttConnecting,
+    kMqttConnected,
+    kAudioSessionOpening,
+    kListening,
+    kSpeaking,
+  };
+
   enum class MessageType : uint8_t {
     kOnButtonClick,
     kOnEncodedAudioData,
@@ -66,7 +75,7 @@ class EngineImpl : public Engine {
   void AbortSpeaking();
   void StartAudioTransmission();
   bool ConnectMqtt();
-  void ChangeState(State new_state);
+  void ChangeState(const State new_state);
 
   mutable std::mutex mutex_;
   MessageQueue message_queue_;

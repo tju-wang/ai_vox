@@ -96,11 +96,6 @@ void EngineImpl::Start(std::shared_ptr<AudioInputDevice> audio_input_device, std
   assert(ret == pdPASS);
 }
 
-Engine::State EngineImpl::state() const {
-  std::lock_guard lock(mutex_);
-  return state_;
-}
-
 void EngineImpl::OnButtonClick() {
   message_queue_.Send(MessageType::kOnButtonClick);
 }
@@ -269,7 +264,7 @@ void EngineImpl::OnMqttData(const std::string &message) {
         if (text != nullptr) {
           CLOG("<< %s", text->valuestring);
           if (observer_) {
-            observer_->PushEvent(Observer::ChatMessageEvent{Engine::Role::kAssistant, text->valuestring});
+            observer_->PushEvent(Observer::ChatMessageEvent{ChatRole::kAssistant, text->valuestring});
           }
         }
       } else if (strcmp("sentence_end", state_json->valuestring) == 0) {
@@ -281,7 +276,7 @@ void EngineImpl::OnMqttData(const std::string &message) {
     if (text != nullptr) {
       CLOG(">> %s", text->valuestring);
       if (observer_) {
-        observer_->PushEvent(Observer::ChatMessageEvent{Engine::Role::kUser, text->valuestring});
+        observer_->PushEvent(Observer::ChatMessageEvent{ChatRole::kUser, text->valuestring});
       }
     }
   } else if (type == "llm") {
@@ -510,9 +505,28 @@ bool EngineImpl::ConnectMqtt() {
   return true;
 }
 
-void EngineImpl::ChangeState(Engine::State new_state) {
+void EngineImpl::ChangeState(const State new_state) {
+  auto convert_state = [](const State state) {
+    switch (state) {
+      case State::kIdle:
+        return ChatState::kIdle;
+      case State::kMqttConnecting:
+        return ChatState::kIniting;
+      case State::kMqttConnected:
+        return ChatState::kStandby;
+      case State::kAudioSessionOpening:
+        return ChatState::kConnecting;
+      case State::kListening:
+        return ChatState::kListening;
+      case State::kSpeaking:
+        return ChatState::kSpeaking;
+      default:
+        return ChatState::kIdle;
+    }
+  };
+
   if (observer_) {
-    observer_->PushEvent(Observer::StateChangedEvent{state_, new_state});
+    observer_->PushEvent(Observer::StateChangedEvent{convert_state(state_), convert_state(new_state)});
   }
   state_ = new_state;
 }
