@@ -1,6 +1,6 @@
 # AI VOX
 
-[![Arduino ESP32 Build](https://github.com/nulllaborg/ai_vox/actions/workflows/arduino_esp32_build.yml/badge.svg)](https://github.com/nulllaborg/ai_vox/actions/workflows/arduino_esp32_build.yml)
+[![Arduino ESP32 Build](https://github.com/nulllaborg/ai_vox/actions/workflows/arduino_esp32_build.yml/badge.svg)](https://github.com/nulllaborg/ai_vox/actions/workflows/arduino_esp32_build.yml) [![AI VOX Board Build](https://github.com/nulllaborg/ai_vox/actions/workflows/ai_vox_board_build.yml/badge.svg)](https://github.com/nulllaborg/ai_vox/actions/workflows/ai_vox_board_build.yml)
 
 ## 概述
 
