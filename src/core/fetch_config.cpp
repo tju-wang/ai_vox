@@ -82,7 +82,7 @@ std::string Json2() {
   cJSON_AddNumberToObject(root, "minimum_free_heap_size", esp_get_minimum_free_heap_size());
   cJSON_AddStringToObject(root, "mac_address", GetMacAddress().c_str());
   cJSON_AddStringToObject(root, "uuid", Uuid().c_str());
-  cJSON_AddStringToObject(root, "chip_model_name", "eps32");
+  cJSON_AddStringToObject(root, "chip_model_name", "esp32");
 
 #if 1
   esp_chip_info_t chip_info;
@@ -160,6 +160,7 @@ Config GetConfigFromServer() {
   };
 
   const auto post_json = Json2();
+  CLOGD("json: %s", post_json.c_str());
   auto client = esp_http_client_init(&http_client_config);
   if (client == nullptr) {
     CLOG("esp_http_client_init failed.");
