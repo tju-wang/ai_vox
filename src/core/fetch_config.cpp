@@ -151,7 +151,7 @@ std::string Json2() {
 
 }  // namespace
 
-Config GetConfigFromServer() {
+std::optional<Config> GetConfigFromServer() {
   CLOGI();
   Config config;
   esp_http_client_config_t http_client_config = {
@@ -163,8 +163,8 @@ Config GetConfigFromServer() {
   CLOGD("json: %s", post_json.c_str());
   auto client = esp_http_client_init(&http_client_config);
   if (client == nullptr) {
-    CLOG("esp_http_client_init failed.");
-    return config;
+    CLOGE("esp_http_client_init failed.");
+    return std::nullopt;
   }
   esp_http_client_set_method(client, HTTP_METHOD_POST);
   esp_http_client_set_header(client, "Device-Id", GetMacAddress().c_str());
@@ -173,30 +173,30 @@ Config GetConfigFromServer() {
 
   auto err = esp_http_client_open(client, post_json.length());
   if (err != ESP_OK) {
-    CLOG("esp_http_client_open failed. Error: %s", esp_err_to_name(err));
+    CLOGE("esp_http_client_open failed. Error: %s", esp_err_to_name(err));
     esp_http_client_cleanup(client);
-    return config;
+    return std::nullopt;
   }
 
   err = esp_http_client_set_method(client, HTTP_METHOD_POST);
   if (err != ESP_OK) {
-    CLOG("esp_http_client_set_method failed. Error: %s", esp_err_to_name(err));
+    CLOGE("esp_http_client_set_method failed. Error: %s", esp_err_to_name(err));
     esp_http_client_cleanup(client);
-    return config;
+    return std::nullopt;
   }
 
   auto wlen = esp_http_client_write(client, post_json.data(), post_json.length());
   if (wlen < 0) {
-    CLOG("esp_http_client_write failed.");
+    CLOGE("esp_http_client_write failed.");
     esp_http_client_cleanup(client);
-    return config;
+    return std::nullopt;
   }
 
   auto content_length = esp_http_client_fetch_headers(client);
   if (content_length < 0) {
-    CLOG("esp_http_client_fetch_headers failed.");
+    CLOGE("esp_http_client_fetch_headers failed.");
     esp_http_client_cleanup(client);
-    return config;
+    return std::nullopt;
   }
 
   std::vector<char> response(content_length + 1);
@@ -209,7 +209,7 @@ Config GetConfigFromServer() {
   auto* const root = cJSON_Parse(response.data());
   if (!cJSON_IsObject(root)) {
     cJSON_Delete(root);
-    return config;
+    return std::nullopt;
   }
 
   auto* mqtt_json = cJSON_GetObjectItem(root, "mqtt");

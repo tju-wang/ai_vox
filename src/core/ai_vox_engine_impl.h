@@ -20,6 +20,7 @@
 
 #include "ai_vox_engine.h"
 #include "audio_session.h"
+#include "iot/iot_manager.h"
 #include "messaging/message_queue.h"
 
 struct button_dev_t;
@@ -33,6 +34,7 @@ class EngineImpl : public Engine {
   ~EngineImpl();
   void SetObserver(std::shared_ptr<Observer> observer) override;
   void SetTrigger(const gpio_num_t gpio) override;
+  void RegisterIotEntity(std::shared_ptr<iot::Entity> entity) override;
   void Start(std::shared_ptr<AudioInputDevice> audio_input_device, std::shared_ptr<AudioOutputDevice> audio_output_device) override;
 
  private:
@@ -75,6 +77,8 @@ class EngineImpl : public Engine {
   void AbortSpeaking();
   void StartAudioTransmission();
   bool ConnectMqtt();
+  void SendIotDescriptions();
+  void SendIotUpdatedStates(const bool force);
   void ChangeState(const State new_state);
 
   mutable std::mutex mutex_;
@@ -90,6 +94,7 @@ class EngineImpl : public Engine {
   std::shared_ptr<AudioInputDevice> audio_input_device_;
   std::shared_ptr<AudioOutputDevice> audio_output_device_;
   std::shared_ptr<Observer> observer_;
+  ai_vox::iot::Manager iot_manager_;
 };
 }  // namespace ai_vox
 

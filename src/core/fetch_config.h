@@ -1,5 +1,6 @@
 #pragma once
 
+#include <optional>
 #include <string>
 
 struct Config {
@@ -21,4 +22,4 @@ struct Config {
   Activation activation;
 };
 
-Config GetConfigFromServer();
+std::optional<Config> GetConfigFromServer();

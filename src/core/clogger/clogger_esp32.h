@@ -23,7 +23,8 @@
 #define CLOGGER_SEVERITY CLOGGER_SEVERITY_INFO
 #endif
 
-struct Clogger {
+class Clogger {
+ public:
   static constexpr const char SeverityToChar(const int severity) {
     switch (severity) {
       case CLOGGER_SEVERITY_VERBOSE:

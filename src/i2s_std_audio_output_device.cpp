@@ -1,5 +1,7 @@
 #include "i2s_std_audio_output_device.h"
 
+#include <cmath>
+
 namespace ai_vox {
 I2sStdAudioOutputDevice::I2sStdAudioOutputDevice(gpio_num_t bclk, gpio_num_t ws, gpio_num_t dout)
     : gpio_cfg_({
@@ -61,10 +63,35 @@ I2sStdAudioOutputDevice::~I2sStdAudioOutputDevice() {
   Close();
 }
 
+uint16_t I2sStdAudioOutputDevice::volume() const {
+  return volume_;
+}
+
+void I2sStdAudioOutputDevice::SetVolume(uint16_t volume) {
+  if (volume > kMaxVolume) {
+    volume = kMaxVolume;
+  }
+  volume_ = volume;
+  volume_factor_ = pow(double(volume_) / 100.0, 2) * 65536;
+}
+
 size_t I2sStdAudioOutputDevice::Write(std::vector<int16_t>&& pcm) {
+  std::vector<int32_t> buffer(pcm.size());
+
+  for (size_t i = 0; i < pcm.size(); i++) {
+    int64_t temp = int64_t(pcm[i]) * volume_factor_;
+    if (temp > INT32_MAX) {
+      buffer[i] = INT32_MAX;
+    } else if (temp < INT32_MIN) {
+      buffer[i] = INT32_MIN;
+    } else {
+      buffer[i] = static_cast<int32_t>(temp);
+    }
+  }
+
   size_t bytes_written = 0;
-  i2s_channel_write(i2s_tx_handle_, pcm.data(), pcm.size() * sizeof(pcm[0]), &bytes_written, 1000);
-  return bytes_written;
+  ESP_ERROR_CHECK(i2s_channel_write(i2s_tx_handle_, buffer.data(), buffer.size() * sizeof(int32_t), &bytes_written, 1000));
+  return buffer.size();
 }
 
 }  // namespace ai_vox
