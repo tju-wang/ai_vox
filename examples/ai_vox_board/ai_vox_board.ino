@@ -10,6 +10,7 @@
 #include "audio_input_device_sph0645.h"
 #include "display.h"
 #include "i2s_std_audio_output_device.h"
+#include "led_strip.h"
 
 #ifndef ARDUINO_ESP32S3_DEV
 #error "This example only supports ESP32S3-Dev board."
@@ -45,16 +46,31 @@ constexpr gpio_num_t kDisplayDcPin = GPIO_NUM_12;
 constexpr gpio_num_t kDisplayRstPin = GPIO_NUM_21;
 constexpr gpio_num_t kDisplayCsPin = GPIO_NUM_15;
 
+constexpr gpio_num_t kWs2812LedPin = GPIO_NUM_41;
+
 constexpr auto kDisplaySpiMode = 0;
 constexpr uint32_t kDisplayWidth = 240;
 constexpr uint32_t kDisplayHeight = 240;
 constexpr bool kDisplayMirrorX = false;
 constexpr bool kDisplayMirrorY = false;
+constexpr bool kDisplayInvertColor = true;
+constexpr bool kDisplaySwapXY = false;
+constexpr auto kDisplayRgbElementOrder = LCD_RGB_ELEMENT_ORDER_RGB;
+
+std::shared_ptr<ai_vox::iot::Entity> g_led_iot_entity;
+std::shared_ptr<ai_vox::iot::Entity> g_screen_iot_entity;
+std::shared_ptr<ai_vox::iot::Entity> g_speaker_iot_entity;
+auto g_audio_output_device = std::make_shared<ai_vox::I2sStdAudioOutputDevice>(kSpeakerPinBclk, kSpeakerPinWs, kSpeakerPinDout);
 
 std::unique_ptr<Display> g_display;
 auto g_observer = std::make_shared<ai_vox::Observer>();
 
+led_strip_handle_t g_led_strip;
+
 void InitDisplay() {
+  pinMode(kDisplayBacklightPin, OUTPUT);
+  analogWrite(kDisplayBacklightPin, 255);
+
   spi_bus_config_t buscfg{
       .mosi_io_num = kDisplayMosiPin,
       .miso_io_num = GPIO_NUM_NC,
@@ -83,19 +99,180 @@ void InitDisplay() {
   ESP_LOGD(TAG, "Install LCD driver");
   esp_lcd_panel_dev_config_t panel_config = {};
   panel_config.reset_gpio_num = kDisplayRstPin;
-  panel_config.rgb_ele_order = LCD_RGB_ELEMENT_ORDER_RGB;
+  panel_config.rgb_ele_order = kDisplayRgbElementOrder;
   panel_config.bits_per_pixel = 16;
   ESP_ERROR_CHECK(esp_lcd_new_panel_st7789(panel_io, &panel_config, &panel));
 
   esp_lcd_panel_reset(panel);
 
   esp_lcd_panel_init(panel);
-  esp_lcd_panel_invert_color(panel, true);
-  esp_lcd_panel_swap_xy(panel, false);
+  esp_lcd_panel_invert_color(panel, kDisplayInvertColor);
+  esp_lcd_panel_swap_xy(panel, kDisplaySwapXY);
   esp_lcd_panel_mirror(panel, kDisplayMirrorX, kDisplayMirrorY);
 
-  g_display = std::make_unique<Display>(panel_io, panel, kDisplayWidth, kDisplayHeight, 0, 0, kDisplayMirrorX, kDisplayMirrorY, false);
+  g_display = std::make_unique<Display>(panel_io, panel, kDisplayWidth, kDisplayHeight, 0, 0, kDisplayMirrorX, kDisplayMirrorY, kDisplaySwapXY);
   g_display->Start();
+}
+
+void InitLed() {
+  // LED strip general initialization, according to your led board design
+  led_strip_config_t strip_config = {.strip_gpio_num = kWs2812LedPin,  // The GPIO that connected to the LED strip's data line
+                                     .max_leds = 1,                    // The number of LEDs in the strip,
+                                     .led_model = LED_MODEL_WS2812,    // LED strip model
+                                     .color_component_format = LED_STRIP_COLOR_COMPONENT_FMT_GRB,  // The color order of the strip: GRB
+                                     .flags = {
+                                         .invert_out = false,  // don't invert the output signal
+                                     }};
+
+  // LED strip backend configuration: RMT
+  led_strip_rmt_config_t rmt_config = {.clk_src = RMT_CLK_SRC_DEFAULT,     // different clock source can lead to different power consumption
+                                       .resolution_hz = 10 * 1000 * 1000,  // RMT counter clock frequency
+                                       .mem_block_symbols = 0,             // the memory block size used by the RMT channel
+                                       .flags = {
+                                           .with_dma = 0,  // Using DMA can improve performance when driving more LEDs
+                                       }};
+  ESP_ERROR_CHECK(led_strip_new_rmt_device(&strip_config, &rmt_config, &g_led_strip));
+  ESP_ERROR_CHECK(led_strip_clear(g_led_strip));
+}
+
+void InitIot() {
+  auto& ai_vox_engine = ai_vox::Engine::GetInstance();
+
+  // Speaker
+  // 1.Define the properties for the speaker entity
+  std::vector<ai_vox::iot::Property> speaker_properties({
+      {
+          "volume",                        // property name
+          "当前音量值",                    // property description
+          ai_vox::iot::ValueType::kNumber  // property type: number, string or bool
+      },
+      // add more properties as needed
+  });
+
+  // 2.Define the functions for the speaker entity
+  std::vector<ai_vox::iot::Function> speaker_functions({
+      {"SetVolume",  // function name
+       "设置音量",   // function description
+       {
+           {
+               "volume",                         // parameter name
+               "0到100之间的整数",               // parameter description
+               ai_vox::iot::ValueType::kNumber,  // parameter type
+               true                              // parameter required
+           },
+           // add more parameters as needed
+       }},
+      // add more functions as needed
+  });
+
+  // 3.Create the speaker entity
+  g_speaker_iot_entity = std::make_shared<ai_vox::iot::Entity>("Speaker",                      // name
+                                                               "扬声器",                       // description
+                                                               std::move(speaker_properties),  // properties
+                                                               std::move(speaker_functions)    // functions
+  );
+
+  // 4.Initialize the speaker entity with default values
+  g_speaker_iot_entity->UpdateState("volume", g_audio_output_device->volume());
+
+  // 5.Register the speaker entity with the AI Vox engine
+  ai_vox_engine.RegisterIotEntity(g_speaker_iot_entity);
+
+  // LED
+  // 1.Define the properties for the LED entity
+  std::vector<ai_vox::iot::Property> led_properties({
+      {
+          "state",                       // property name
+          "LED灯开关状态",               // property description
+          ai_vox::iot::ValueType::kBool  // property type
+      },
+      // add more properties as needed
+  });
+
+  // 2.Define the functions for the LED entity
+  std::vector<ai_vox::iot::Function> led_functions({
+      {"TurnOn",     // function name
+       "打开LED灯",  // function description
+       {
+           // no parameters
+       }},
+      {"TurnOff",    // function name
+       "关闭LED灯",  // function description
+       {
+           // no parameters
+       }},
+      // add more functions as needed
+  });
+
+  // 3.Create the LED entity
+  g_led_iot_entity = std::make_shared<ai_vox::iot::Entity>("Led",                      // name
+                                                           "LED灯",                    // description
+                                                           std::move(led_properties),  // properties
+                                                           std::move(led_functions)    // functions
+  );
+
+  // 4.Initialize the LED entity with default values
+  g_led_iot_entity->UpdateState("state", false);
+
+  // 5.Register the LED entity with the AI Vox engine
+  ai_vox_engine.RegisterIotEntity(g_led_iot_entity);
+
+  // Screen
+  // 1.Define the properties for the screen entity
+  std::vector<ai_vox::iot::Property> screen_properties({
+      {
+          "theme",                         // property name
+          "主题",                          // property description
+          ai_vox::iot::ValueType::kString  // property type
+      },
+      {
+          "brightness",                    // property name
+          "当前亮度百分比",                // property description
+          ai_vox::iot::ValueType::kNumber  // property type
+      },
+      // add more properties as needed
+  });
+
+  // 2.Define the functions for the screen entity
+  std::vector<ai_vox::iot::Function> screen_functions({
+      {"SetTheme",      // function name
+       "设置屏幕主题",  // function description
+       {
+           {
+               "theme_name",                     // parameter name
+               "主题模式, light 或 dark",        // parameter description
+               ai_vox::iot::ValueType::kString,  // parameter type
+               true                              // parameter required
+           },
+           // add more parameters as needed
+       }},
+      {"SetBrightness",  // function name
+       "设置亮度",       // function description
+       {
+           {
+               "brightness",                     // parameter name
+               "0到100之间的整数",               // parameter description
+               ai_vox::iot::ValueType::kNumber,  // parameter type
+               true                              // parameter required
+           },
+           // add more parameters as needed
+       }},
+      // add more functions as needed
+  });
+
+  // 3.Create the screen entity
+  g_screen_iot_entity = std::make_shared<ai_vox::iot::Entity>("Screen",                          // name
+                                                              "这是一个屏幕，可设置主题和亮度",  // description
+                                                              std::move(screen_properties),      // properties
+                                                              std::move(screen_functions)        // functions
+  );
+
+  // 4.Initialize the screen entity with default values
+  g_screen_iot_entity->UpdateState("theme", "light");
+  g_screen_iot_entity->UpdateState("brightness", 100);
+
+  // 6.Register the screen entity with the AI Vox engine
+  ai_vox_engine.RegisterIotEntity(g_screen_iot_entity);
 }
 
 void PrintMemInfo() {
@@ -165,13 +342,15 @@ void setup() {
   printf("WiFi connected, IP address: %s\n", WiFi.localIP().toString().c_str());
   g_display->ShowStatus("Wifi connected");
 
+  InitLed();
+  InitIot();
+
   auto audio_input_device = std::make_shared<AudioInputDeviceSph0645>(kMicPinBclk, kMicPinWs, kMicPinDin);
-  auto audio_output_device = std::make_shared<ai_vox::I2sStdAudioOutputDevice>(kSpeakerPinBclk, kSpeakerPinWs, kSpeakerPinDout);
   auto& ai_vox_engine = ai_vox::Engine::GetInstance();
   ai_vox_engine.SetObserver(g_observer);
   ai_vox_engine.SetTrigger(kTriggerPin);
-  ai_vox_engine.Start(audio_input_device, audio_output_device);
-  g_display->ShowStatus("AI Vox starting...");
+  ai_vox_engine.Start(audio_input_device, g_audio_output_device);
+  g_display->ShowStatus("AI Vox Engine starting...");
 }
 
 void loop() {
@@ -238,6 +417,62 @@ void loop() {
           printf("role: user, content: %s\n", chat_message_event->content.c_str());
           g_display->SetChatMessage(Display::Role::kUser, chat_message_event->content);
           break;
+        }
+      }
+    } else if (auto iot_message_event = std::get_if<ai_vox::Observer::IotMessageEvent>(&event)) {
+      printf("IOT message: %s, function: %s\n", iot_message_event->name.c_str(), iot_message_event->function.c_str());
+      for (const auto& [key, value] : iot_message_event->parameters) {
+        if (std::get_if<bool>(&value)) {
+          printf("key: %s, value: %s\n", key.c_str(), std::get<bool>(value) ? "true" : "false");
+        } else if (std::get_if<std::string>(&value)) {
+          printf("key: %s, value: %s\n", key.c_str(), std::get<std::string>(value).c_str());
+        } else if (std::get_if<int64_t>(&value)) {
+          printf("key: %s, value: %lld\n", key.c_str(), std::get<int64_t>(value));
+        }
+      }
+
+      if (iot_message_event->name == "Led") {
+        if (iot_message_event->function == "TurnOn") {
+          printf("turn on led\n");
+          ESP_ERROR_CHECK(led_strip_set_pixel(g_led_strip, 0, 200, 200, 200));
+          ESP_ERROR_CHECK(led_strip_refresh(g_led_strip));
+          g_led_iot_entity->UpdateState("state", true);  //  Note: Must UpdateState after change the device state
+        } else if (iot_message_event->function == "TurnOff") {
+          printf("turn off led\n");
+          ESP_ERROR_CHECK(led_strip_clear(g_led_strip));
+          g_led_iot_entity->UpdateState("state", false);  // Note: Must UpdateState after change the device state
+        }
+      } else if (iot_message_event->name == "Screen") {
+        if (iot_message_event->function == "SetTheme") {
+          if (const auto it = iot_message_event->parameters.find("theme_name"); it != iot_message_event->parameters.end()) {
+            auto theme_name = it->second;
+            if (std::get_if<std::string>(&theme_name)) {
+              printf("Screen theme: %s\n", std::get<std::string>(theme_name).c_str());
+              // TODO: Set the theme
+              // g_display->SetTheme(std::get<std::string>(theme_name));
+              g_screen_iot_entity->UpdateState("theme", std::get<std::string>(theme_name));  // Note: Must UpdateState after change the device state
+            }
+          }
+        } else if (iot_message_event->function == "SetBrightness") {
+          if (const auto it = iot_message_event->parameters.find("brightness"); it != iot_message_event->parameters.end()) {
+            auto brightness = it->second;
+            if (std::get_if<int64_t>(&brightness)) {
+              printf("Screen brightness: %lld\n", std::get<int64_t>(brightness));
+              analogWrite(kDisplayBacklightPin, 255 * std::get<int64_t>(brightness) / 100);
+              g_screen_iot_entity->UpdateState("brightness", std::get<int64_t>(brightness));  // Note: Must UpdateState after change the device state
+            }
+          }
+        }
+      } else if (iot_message_event->name == "Speaker") {
+        if (iot_message_event->function == "SetVolume") {
+          if (const auto it = iot_message_event->parameters.find("volume"); it != iot_message_event->parameters.end()) {
+            auto volume = it->second;
+            if (std::get_if<int64_t>(&volume)) {
+              printf("Speaker volume: %lld\n", std::get<int64_t>(volume));
+              g_audio_output_device->SetVolume(std::get<int64_t>(volume));
+              g_speaker_iot_entity->UpdateState("volume", std::get<int64_t>(volume));  // Note: Must UpdateState after change the device state
+            }
+          }
         }
       }
     }

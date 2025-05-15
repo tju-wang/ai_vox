@@ -8,6 +8,8 @@
 #include <string>
 #include <variant>
 
+#include "iot_entity.h"
+
 namespace ai_vox {
 
 enum class ChatState : uint8_t {
@@ -47,7 +49,13 @@ class Observer {
     std::string emotion;
   };
 
-  using Event = std::variant<StateChangedEvent, ActivationEvent, ChatMessageEvent, EmotionEvent>;
+  struct IotMessageEvent {
+    std::string name;
+    std::string function;
+    std::map<std::string, iot::Value> parameters;
+  };
+
+  using Event = std::variant<StateChangedEvent, ActivationEvent, ChatMessageEvent, EmotionEvent, IotMessageEvent>;
 
   Observer() = default;
   virtual ~Observer() = default;

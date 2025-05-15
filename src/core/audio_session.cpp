@@ -104,7 +104,7 @@ bool AudioSession::Open() {
 
   sem_ = xSemaphoreCreateBinary();
 
-  const auto task_create_ret = xTaskCreate(RecevieLoop, "RecevieLoop", 1024 * 3, this, tskIDLE_PRIORITY, nullptr);
+  const auto task_create_ret = xTaskCreate(RecevieLoop, "RecevieLoop", 1024 * 3, this, tskIDLE_PRIORITY + 1, nullptr);
   assert(task_create_ret == pdPASS);
   return true;
 }

@@ -64,6 +64,14 @@ void EngineImpl::SetTrigger(const gpio_num_t gpio) {
   trigger_pin_ = gpio;
 }
 
+void EngineImpl::RegisterIotEntity(std::shared_ptr<iot::Entity> entity) {
+  std::lock_guard lock(mutex_);
+  if (state_ != State::kIdle) {
+    return;
+  }
+  iot_manager_.RegisterEntity(std::move(entity));
+}
+
 void EngineImpl::Start(std::shared_ptr<AudioInputDevice> audio_input_device, std::shared_ptr<AudioOutputDevice> audio_output_device) {
   CLOGD();
   std::lock_guard lock(mutex_);
@@ -168,6 +176,7 @@ void EngineImpl::OnMqttEvent(esp_event_base_t base, int32_t event_id, void *even
 }
 
 void EngineImpl::OnMqttData(const std::string &message) {
+  CLOGD("message: %s", message.c_str());
   auto *const root = cJSON_Parse(message.c_str());
   if (!cJSON_IsObject(root)) {
     cJSON_Delete(root);
@@ -230,6 +239,8 @@ void EngineImpl::OnMqttData(const std::string &message) {
     CLOGV("aes_nonce: %s", aes_nonce.c_str());
     CLOGV("session_id: %s", session_id.c_str());
 
+    SendIotDescriptions();
+
     audio_session_ = std::make_shared<AudioSession>(udp_server, udp_port, aes_key, aes_nonce, session_id, [this](AudioSession::Event event) {
       if (event == AudioSession::Event::kOnOutputDataComsumed) {
         CLOGD("kOnOutputDataComsumed");
@@ -238,6 +249,7 @@ void EngineImpl::OnMqttData(const std::string &message) {
     });
 
     if (audio_session_->Open()) {
+      SendIotUpdatedStates(true);
       StartAudioTransmission();
       ChangeState(State::kListening);
     }
@@ -287,11 +299,49 @@ void EngineImpl::OnMqttData(const std::string &message) {
         observer_->PushEvent(Observer::EmotionEvent{emotion->valuestring});
       }
     }
-  }
+  } else if (type == "iot") {
+    auto commands = cJSON_GetObjectItem(root, "commands");
+    if (cJSON_IsArray(commands)) {
+      auto count = cJSON_GetArraySize(commands);
+      for (size_t i = 0; i < count; ++i) {
+        auto *command = cJSON_GetArrayItem(commands, i);
+        if (!cJSON_IsObject(command)) {
+          continue;
+        }
 
+        auto *name_json = cJSON_GetObjectItem(command, "name");
+        auto *method_json = cJSON_GetObjectItem(command, "method");
+        auto *parameters_json = cJSON_GetObjectItem(command, "parameters");
+
+        if (!cJSON_IsString(name_json) || !cJSON_IsString(method_json) || !cJSON_IsObject(parameters_json)) {
+          continue;
+        }
+
+        std::string name = name_json->valuestring;
+        std::string method = method_json->valuestring;
+        std::map<std::string, iot::Value> parameters;
+        auto *parameter = parameters_json->child;
+        while (parameter) {
+          auto *key = parameter->string;
+          auto *value = parameter->valuestring;
+          if (cJSON_IsString(parameter)) {
+            parameters[key] = std::string(value);
+          } else if (cJSON_IsNumber(parameter)) {
+            parameters[key] = static_cast<int64_t>(parameter->valueint);
+          } else if (cJSON_IsBool(parameter)) {
+            parameters[key] = static_cast<bool>(parameter->valueint);
+          }
+          parameter = parameter->next;
+        }
+        auto iot_message = Observer::IotMessageEvent{name, method, parameters};
+        if (observer_) {
+          observer_->PushEvent(iot_message);
+        }
+      }
+    }
+  }
   cJSON_Delete(root);
 }
-
 void EngineImpl::Loop() {
 loop_start:
   auto message = message_queue_.Recevie();
@@ -339,6 +389,7 @@ loop_start:
     case MessageType::kOnOutputDataComsumed: {
       CLOG("kOnOutputDataComsumed");
       if (state_ == State::kSpeaking) {
+        SendIotUpdatedStates(false);
         StartAudioTransmission();
         ChangeState(State::kListening);
       }
@@ -441,34 +492,39 @@ bool EngineImpl::ConnectMqtt() {
 
   auto config = GetConfigFromServer();
 
-  CLOG("mqtt endpoint: %s", config.mqtt.endpoint.c_str());
-  CLOG("mqtt client_id: %s", config.mqtt.client_id.c_str());
-  CLOG("mqtt username: %s", config.mqtt.username.c_str());
-  CLOG("mqtt password: %s", config.mqtt.password.c_str());
-  CLOG("mqtt publish_topic: %s", config.mqtt.publish_topic.c_str());
-  CLOG("mqtt subscribe_topic: %s", config.mqtt.subscribe_topic.c_str());
+  if (!config.has_value()) {
+    CLOGE("GetConfigFromServer failed");
+    return false;
+  }
 
-  CLOG("activation code: %s", config.activation.code.c_str());
-  CLOG("activation message: %s", config.activation.message.c_str());
+  CLOG("mqtt endpoint: %s", config->mqtt.endpoint.c_str());
+  CLOG("mqtt client_id: %s", config->mqtt.client_id.c_str());
+  CLOG("mqtt username: %s", config->mqtt.username.c_str());
+  CLOG("mqtt password: %s", config->mqtt.password.c_str());
+  CLOG("mqtt publish_topic: %s", config->mqtt.publish_topic.c_str());
+  CLOG("mqtt subscribe_topic: %s", config->mqtt.subscribe_topic.c_str());
 
-  if (!config.activation.code.empty()) {
+  CLOG("activation code: %s", config->activation.code.c_str());
+  CLOG("activation message: %s", config->activation.message.c_str());
+
+  if (!config->activation.code.empty()) {
     if (observer_) {
-      observer_->PushEvent(Observer::ActivationEvent{config.activation.code, config.activation.message});
+      observer_->PushEvent(Observer::ActivationEvent{config->activation.code, config->activation.message});
     }
     return false;
   }
 
-  mqtt_publish_topic_ = config.mqtt.publish_topic;
-  mqtt_subscribe_topic_ = config.mqtt.subscribe_topic;
+  mqtt_publish_topic_ = config->mqtt.publish_topic;
+  mqtt_subscribe_topic_ = config->mqtt.subscribe_topic;
 
   esp_mqtt_client_config_t mqtt_config = {};
-  mqtt_config.broker.address.hostname = config.mqtt.endpoint.c_str();
+  mqtt_config.broker.address.hostname = config->mqtt.endpoint.c_str();
   mqtt_config.broker.address.port = 8883;
   mqtt_config.broker.address.transport = MQTT_TRANSPORT_OVER_SSL;
   mqtt_config.broker.verification.crt_bundle_attach = esp_crt_bundle_attach;
-  mqtt_config.credentials.client_id = config.mqtt.client_id.c_str();
-  mqtt_config.credentials.username = config.mqtt.username.c_str();
-  mqtt_config.credentials.authentication.password = config.mqtt.password.c_str();
+  mqtt_config.credentials.client_id = config->mqtt.client_id.c_str();
+  mqtt_config.credentials.username = config->mqtt.username.c_str();
+  mqtt_config.credentials.authentication.password = config->mqtt.password.c_str();
   mqtt_config.session.keepalive = 90;
 
   if (heap_caps_get_total_size(MALLOC_CAP_SPIRAM) == 0) {
@@ -503,6 +559,33 @@ bool EngineImpl::ConnectMqtt() {
   ChangeState(State::kMqttConnecting);
   CLOGI();
   return true;
+}
+
+void EngineImpl::SendIotDescriptions() {
+  const auto descirptions = iot_manager_.DescriptionsJson();
+  for (const auto &descirption : descirptions) {
+    CLOGD("descirption: %s", descirption.c_str());
+    auto err = esp_mqtt_client_publish(mqtt_client_, mqtt_publish_topic_.c_str(), descirption.c_str(), descirption.size(), 0, 0);
+    if (err != ESP_OK) {
+      CLOGE("esp_mqtt_client_publish failed. Error: %s", esp_err_to_name(err));
+    } else {
+      CLOGD("mqtt publish ok");
+    }
+  }
+}
+
+void EngineImpl::SendIotUpdatedStates(const bool force) {
+  CLOGD("force: %d", force);
+  const auto updated_states = iot_manager_.UpdatedJson(force);
+  for (const auto &updated_state : updated_states) {
+    CLOGD("updated_state: %s", updated_state.c_str());
+    auto err = esp_mqtt_client_publish(mqtt_client_, mqtt_publish_topic_.c_str(), updated_state.c_str(), updated_state.size(), 0, 0);
+    if (err != ESP_OK) {
+      CLOGE("esp_mqtt_client_publish failed. Error: %s", esp_err_to_name(err));
+    } else {
+      CLOGD("mqtt publish ok");
+    }
+  }
 }
 
 void EngineImpl::ChangeState(const State new_state) {
