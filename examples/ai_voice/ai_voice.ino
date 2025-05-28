@@ -44,16 +44,6 @@ std::shared_ptr<ai_vox::iot::Entity> g_led_iot_entity;
 std::shared_ptr<ai_vox::iot::Entity> g_speaker_iot_entity;
 auto g_audio_output_device = std::make_shared<ai_vox::I2sStdAudioOutputDevice>(kSpeakerPinBclk, kSpeakerPinWs, kSpeakerPinDout);
 
-std::string RoleToString(const ai_vox::ChatRole role) {
-  switch (role) {
-    case ai_vox::ChatRole::kAssistant:
-      return "assistant";
-    case ai_vox::ChatRole::kUser:
-      return "user";
-  }
-  return "unknown";
-}
-
 void InitIot() {
   printf("InitIot\n");
   auto& ai_vox_engine = ai_vox::Engine::GetInstance();
@@ -194,6 +184,7 @@ void setup() {
   printf("Connecting to WiFi, ssid: %s, password: %s\n", WIFI_SSID, WIFI_PASSWORD);
   WiFi.begin(WIFI_SSID, WIFI_PASSWORD);
   while (WiFi.status() != WL_CONNECTED) {
+    delay(1000);
     printf("Connecting to WiFi, ssid: %s, password: %s\n", WIFI_SSID, WIFI_PASSWORD);
   }
 
@@ -208,6 +199,11 @@ void setup() {
   auto& ai_vox_engine = ai_vox::Engine::GetInstance();
   ai_vox_engine.SetObserver(g_observer);
   ai_vox_engine.SetTrigger(kTriggerPin);
+  ai_vox_engine.SetOtaUrl("https://api.tenclass.net/xiaozhi/ota/");
+  ai_vox_engine.ConfigWebsocket("wss://api.tenclass.net/xiaozhi/v1/",
+                                {
+                                    {"Authorization", "Bearer test-token"},
+                                });
   ai_vox_engine.Start(audio_input_device, g_audio_output_device);
   printf("AI Vox engine started\n");
 }
@@ -226,7 +222,9 @@ void loop() {
     if (auto activation_event = std::get_if<ai_vox::Observer::ActivationEvent>(&event)) {
       printf("activation code: %s, message: %s\n", activation_event->code.c_str(), activation_event->message.c_str());
     } else if (auto state_changed_event = std::get_if<ai_vox::Observer::StateChangedEvent>(&event)) {
-      printf("state changed from %u to %u\n", state_changed_event->old_state, state_changed_event->new_state);
+      printf("state changed from %" PRIu8 " to %" PRIu8 "\n",
+             static_cast<uint8_t>(state_changed_event->old_state),
+             static_cast<uint8_t>(state_changed_event->new_state));
       switch (state_changed_event->new_state) {
         case ai_vox::ChatState::kIdle: {
           printf("Idle\n");
@@ -289,7 +287,7 @@ void loop() {
         } else if (iot_message_event->function == "TurnOff") {
           printf("turn off led\n");
           digitalWrite(kLedPin, LOW);
-          g_led_iot_entity->UpdateState("state", false); // Note: Must UpdateState after change the device state
+          g_led_iot_entity->UpdateState("state", false);  // Note: Must UpdateState after change the device state
         }
       } else if (iot_message_event->name == "Speaker") {
         if (iot_message_event->function == "SetVolume") {
@@ -298,7 +296,7 @@ void loop() {
             if (std::get_if<int64_t>(&volume)) {
               printf("Speaker volume: %lld\n", std::get<int64_t>(volume));
               g_audio_output_device->SetVolume(std::get<int64_t>(volume));
-              g_speaker_iot_entity->UpdateState("volume", std::get<int64_t>(volume)); // Note: Must UpdateState after change the device state
+              g_speaker_iot_entity->UpdateState("volume", std::get<int64_t>(volume));  // Note: Must UpdateState after change the device state
             }
           }
         }

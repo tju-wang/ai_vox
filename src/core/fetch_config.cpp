@@ -151,13 +151,13 @@ std::string Json2() {
 
 }  // namespace
 
-std::optional<Config> GetConfigFromServer() {
+std::optional<Config> GetConfigFromServer(const std::string& url, const std::string& uuid) {
   CLOGI();
   Config config;
-  esp_http_client_config_t http_client_config = {
-      .url = "https://api.tenclass.net/xiaozhi/ota/",
-      .crt_bundle_attach = esp_crt_bundle_attach,
-  };
+  esp_http_client_config_t http_client_config;
+  memset(&http_client_config, 0, sizeof(http_client_config));
+  http_client_config.url = url.c_str();
+  http_client_config.crt_bundle_attach = esp_crt_bundle_attach;
 
   const auto post_json = Json2();
   CLOGD("json: %s", post_json.c_str());
@@ -168,7 +168,7 @@ std::optional<Config> GetConfigFromServer() {
   }
   esp_http_client_set_method(client, HTTP_METHOD_POST);
   esp_http_client_set_header(client, "Device-Id", GetMacAddress().c_str());
-  esp_http_client_set_header(client, "Client-Id", Uuid().c_str());
+  esp_http_client_set_header(client, "Client-Id", uuid.c_str());
   esp_http_client_set_header(client, "Content-Type", "application/json");
 
   auto err = esp_http_client_open(client, post_json.length());
@@ -201,7 +201,7 @@ std::optional<Config> GetConfigFromServer() {
 
   std::vector<char> response(content_length + 1);
   response[content_length] = '\0';
-  int read_ret = esp_http_client_read_response(client, response.data(), content_length);
+  esp_http_client_read_response(client, response.data(), content_length);
   esp_http_client_cleanup(client);
 
   CLOG("response:%s", response.data());

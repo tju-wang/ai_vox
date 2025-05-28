@@ -87,7 +87,15 @@ void InitDisplay() {
       .sclk_io_num = kDisplayClkPin,
       .quadwp_io_num = GPIO_NUM_NC,
       .quadhd_io_num = GPIO_NUM_NC,
+      .data4_io_num = GPIO_NUM_NC,
+      .data5_io_num = GPIO_NUM_NC,
+      .data6_io_num = GPIO_NUM_NC,
+      .data7_io_num = GPIO_NUM_NC,
+      .data_io_default_level = false,
       .max_transfer_sz = kDisplayWidth * kDisplayHeight * sizeof(uint16_t),
+      .flags = 0,
+      .isr_cpu_id = ESP_INTR_CPU_AFFINITY_AUTO,
+      .intr_flags = 0,
   };
   ESP_ERROR_CHECK(spi_bus_initialize(SPI3_HOST, &buscfg, SPI_DMA_CH_AUTO));
 
@@ -339,6 +347,11 @@ void setup() {
   auto& ai_vox_engine = ai_vox::Engine::GetInstance();
   ai_vox_engine.SetObserver(g_observer);
   ai_vox_engine.SetTrigger(kTriggerPin);
+  ai_vox_engine.SetOtaUrl("https://api.tenclass.net/xiaozhi/ota/");
+  ai_vox_engine.ConfigWebsocket("wss://api.tenclass.net/xiaozhi/v1/",
+                                {
+                                    {"Authorization", "Bearer test-token"},
+                                });
   ai_vox_engine.Start(audio_input_device, g_audio_output_device);
   g_display->ShowStatus("AI Vox Engine starting...");
 }

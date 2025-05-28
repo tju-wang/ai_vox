@@ -4,6 +4,7 @@
 #define _I2S_STD_AUDIO_OUTPUT_DEVICE_H_
 
 #include <driver/i2s_std.h>
+
 #include <cmath>
 
 #include "audio_output_device.h"
@@ -31,6 +32,13 @@ class I2sStdAudioOutputDevice : public AudioOutputDevice {
       .ws_width = I2S_DATA_BIT_WIDTH_32BIT,
       .ws_pol = false,
       .bit_shift = true,
+#if SOC_I2S_HW_VERSION_1
+      .msb_right = false,
+#else
+      .left_align = true,
+      .big_endian = false,
+      .bit_order_lsb = false,
+#endif
   };
   i2s_std_gpio_config_t gpio_cfg_;
   uint16_t volume_ = 70;

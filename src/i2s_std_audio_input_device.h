@@ -28,7 +28,9 @@ class I2sStdAudioInputDevice : public AudioInputDevice {
       .ws_width = I2S_DATA_BIT_WIDTH_32BIT,
       .ws_pol = false,
       .bit_shift = true,
-#ifdef I2S_HW_VERSION_2
+#if SOC_I2S_HW_VERSION_1
+      .msb_right = false,
+#else
       .left_align = true,
       .big_endian = false,
       .bit_order_lsb = false,

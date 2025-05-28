@@ -25,7 +25,7 @@
 
 class Clogger {
  public:
-  static constexpr const char SeverityToChar(const int severity) {
+  static constexpr char SeverityToChar(const int severity) {
     switch (severity) {
       case CLOGGER_SEVERITY_VERBOSE:
         return 'V';

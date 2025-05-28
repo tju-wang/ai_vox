@@ -32,11 +32,13 @@ Display::Display(esp_lcd_panel_io_handle_t panel_io, esp_lcd_panel_handle_t pane
               .mirror_x = mirror_x,
               .mirror_y = mirror_y,
           },
+      .color_format = LV_COLOR_FORMAT_UNKNOWN,
       .flags =
           {
               .buff_dma = 1,
               .buff_spiram = 0,
               .sw_rotate = 0,
+              .swap_bytes = 0,
               .full_refresh = 0,
               .direct_mode = 0,
           },

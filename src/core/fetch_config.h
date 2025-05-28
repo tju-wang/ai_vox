@@ -22,4 +22,4 @@ struct Config {
   Activation activation;
 };
 
-std::optional<Config> GetConfigFromServer();
+std::optional<Config> GetConfigFromServer(const std::string& url, const std::string& uuid);

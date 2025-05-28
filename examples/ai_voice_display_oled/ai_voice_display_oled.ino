@@ -75,6 +75,7 @@ void InitDisplay() {
       .flags =
           {
               .enable_internal_pullup = 1,
+              .allow_pd = false,
           },
   };
   ESP_ERROR_CHECK(i2c_new_master_bus(&bus_config, &display_i2c_bus));
@@ -272,6 +273,11 @@ void setup() {
   auto& ai_vox_engine = ai_vox::Engine::GetInstance();
   ai_vox_engine.SetObserver(g_observer);
   ai_vox_engine.SetTrigger(kTriggerPin);
+  ai_vox_engine.SetOtaUrl("https://api.tenclass.net/xiaozhi/ota/");
+  ai_vox_engine.ConfigWebsocket("wss://api.tenclass.net/xiaozhi/v1/",
+                                {
+                                    {"Authorization", "Bearer test-token"},
+                                });
   ai_vox_engine.Start(audio_input_device, g_audio_output_device);
   g_display->ShowStatus("AI Vox starting...");
   printf("AI Vox engine started\n");

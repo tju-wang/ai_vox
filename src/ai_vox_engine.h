@@ -25,6 +25,8 @@ class Engine {
   virtual ~Engine() = default;
   virtual void SetObserver(std::shared_ptr<Observer> observer) = 0;
   virtual void SetTrigger(const gpio_num_t gpio) = 0;
+  virtual void SetOtaUrl(const std::string url) = 0;
+  virtual void ConfigWebsocket(const std::string url, const std::map<std::string, std::string> headers) = 0;
   virtual void RegisterIotEntity(std::shared_ptr<iot::Entity> entity) = 0;
   virtual void Start(std::shared_ptr<AudioInputDevice> audio_input_device, std::shared_ptr<AudioOutputDevice> audio_output_device) = 0;
 
