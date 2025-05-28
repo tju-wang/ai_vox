@@ -2,9 +2,9 @@ name: AI VOX Board Build
 
 on:
   push:
-    branches: ["main"]
+    branches: ["main", "v*"]
   pull_request:
-    branches: ["main"]
+    branches: ["main", "v*"]
 
 jobs:
   build:
@@ -39,9 +39,16 @@ jobs:
       - name: install lib lvgl@9.2.2
         run: |
           ${ARDUINO_CLI_DIR}/arduino-cli --config-dir ${ARDUINO_CLI_CONFIG_DIR} lib install "lvgl@9.2.2"
+      - name: Checkout code
+        uses: actions/checkout@v4
+        with:
+          path: ai_vox
+      - name: zip
+        run: |
+          zip -r ai_vox.zip ai_vox
       - name: install lib dependencies
         run: |
-          ${ARDUINO_CLI_DIR}/arduino-cli --config-dir ${ARDUINO_CLI_CONFIG_DIR} lib install --git-url "${GITHUB_SERVER_URL}/${GITHUB_REPOSITORY}.git"
+          ${ARDUINO_CLI_DIR}/arduino-cli --config-dir ${ARDUINO_CLI_CONFIG_DIR} lib install --zip-path ai_vox.zip
       - name: compile
         run: |
           echo "compile ${ARDUINO_USER_DIR}/libraries/${LIB_DIR_NAME}/examples/${{matrix.example}}/${{matrix.example}}.ino"

@@ -200,6 +200,7 @@ void InitIot() {
   ai_vox_engine.RegisterIotEntity(g_led_iot_entity);
 }
 
+#ifdef PRINT_HEAP_INFO_INTERVAL
 void PrintMemInfo() {
   if (heap_caps_get_total_size(MALLOC_CAP_SPIRAM) > 0) {
     const auto total_size = heap_caps_get_total_size(MALLOC_CAP_SPIRAM);
@@ -240,6 +241,7 @@ void PrintMemInfo() {
            min_free_size >> 10);
   }
 }
+#endif
 }  // namespace
 
 void setup() {
