@@ -134,9 +134,9 @@ loop_start:
     case MessageType::kData: {
       auto data = *message.Read<std::shared_ptr<std::vector<uint8_t>>>();
       std::vector<int16_t> pcm(frame_size_);
-      auto ret = opus_decode(opus_decoder_, data->data(), data->size(), pcm.data(), pcm.size(), 0);
+      const auto ret = opus_decode(opus_decoder_, data->data(), data->size(), pcm.data(), pcm.size(), 0);
       data.reset();
-      if (audio_output_device) {
+      if (ret >= 0 && audio_output_device) {
         audio_output_device->Write(std::move(pcm));
       }
       break;

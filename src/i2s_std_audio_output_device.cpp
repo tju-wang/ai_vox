@@ -33,6 +33,7 @@ bool I2sStdAudioOutputDevice::Open(uint32_t sample_rate) {
       .dma_frame_num = 480,
       .auto_clear_after_cb = true,
       .auto_clear_before_cb = false,
+      .allow_pd = false,
       .intr_priority = 0,
   };
 

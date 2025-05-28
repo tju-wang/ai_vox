@@ -2,7 +2,7 @@
 
 namespace ai_vox::iot {
 Entity::Entity(std::string name, std::string description, std::vector<Property> properties, std::vector<Function> functions)
-    : name_(std::move(name)), description_(std::move(description)) {
+    : description_(std::move(description)), name_(std::move(name)) {
   for (const auto& propertie : properties) {
     properties_.insert({propertie.name, std::move(propertie)});
   }

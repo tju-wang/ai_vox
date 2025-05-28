@@ -18,7 +18,7 @@ enum Status : EventBits_t {
 Wifi& Wifi::GetInstance() {
   static std::once_flag s_once_flag;
   static Wifi* s_instance = nullptr;
-  std::call_once(s_once_flag, [&s_instance]() { s_instance = new Wifi(); });
+  std::call_once(s_once_flag, []() { s_instance = new Wifi(); });
   return *s_instance;
 }
 

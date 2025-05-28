@@ -21,7 +21,7 @@ constexpr uint32_t kFrameDuration = 20;  // ms
 }  // namespace
 
 AudioInputEngine::AudioInputEngine(std::shared_ptr<ai_vox::AudioInputDevice> audio_input_device, const AudioInputEngine::DataHandler& handler)
-    : audio_input_device_(std::move(audio_input_device)), handler_(handler) {
+    : handler_(handler), audio_input_device_(std::move(audio_input_device)) {
   constexpr uint32_t frame_rate = 16000;
   constexpr uint32_t channels = 1;
   int error = 0;

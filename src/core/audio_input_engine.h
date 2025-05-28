@@ -28,17 +28,16 @@ class AudioInputEngine {
 
   enum class MessageType : uint8_t {
     kClose,
-    kProcessNext,
   };
 
-  using Message = Message<MessageType>;
-  using MessageQueue = MessageQueue<MessageType>;
+  // using Message = Message<MessageType>;
+  // using MessageQueue = MessageQueue<MessageType>;
 
   DataHandler const handler_;
   std::shared_ptr<ai_vox::AudioInputDevice> audio_input_device_;
   std::mutex mutex_;
   std::condition_variable cv_;
-  MessageQueue message_queue_;
+  MessageQueue<MessageType> message_queue_;
   struct OpusEncoder *opus_encoder_ = nullptr;
 };
 

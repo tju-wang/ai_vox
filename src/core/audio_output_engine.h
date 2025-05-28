@@ -45,8 +45,8 @@ class AudioOutputEngine {
     kDataEnd,
   };
 
-  using Message = Message<MessageType>;
-  using MessageQueue = MessageQueue<MessageType>;
+  // using Message = Message<MessageType>;
+  // using MessageQueue = MessageQueue<MessageType>;
 
   static void Loop(void* self);
   void Loop();
@@ -56,5 +56,5 @@ class AudioOutputEngine {
   struct OpusDecoder* opus_decoder_ = nullptr;
   uint32_t frame_size_ = 0;
   EventHandler handler_;
-  MessageQueue message_queue_;
+  MessageQueue<MessageType> message_queue_;
 };

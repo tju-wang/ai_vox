@@ -39,10 +39,17 @@ jobs:
       - name: install lib lvgl@9.2.2
         run: |
           ${ARDUINO_CLI_DIR}/arduino-cli --config-dir ${ARDUINO_CLI_CONFIG_DIR} lib install "lvgl@9.2.2"
+      - name: checkout code
+        uses: actions/checkout@v4
+        with:
+          path: ai_vox
+      - name: zip
+        run: |
+          zip -r ai_vox.zip ai_vox
       - name: install lib dependencies
         run: |
-          ${ARDUINO_CLI_DIR}/arduino-cli --config-dir ${ARDUINO_CLI_CONFIG_DIR} lib install --git-url "${GITHUB_SERVER_URL}/${GITHUB_REPOSITORY}.git"
+          ${ARDUINO_CLI_DIR}/arduino-cli --config-dir ${ARDUINO_CLI_CONFIG_DIR} lib install --zip-path ai_vox.zip
       - name: compile
         run: |
           echo "compile ${ARDUINO_USER_DIR}/libraries/${LIB_DIR_NAME}/examples/${{matrix.example}}/${{matrix.example}}.ino"
-          ${ARDUINO_CLI_DIR}/arduino-cli --config-dir ${ARDUINO_CLI_CONFIG_DIR} compile --fqbn ${{matrix.fqbn}} "${ARDUINO_USER_DIR}/libraries/${LIB_DIR_NAME}/examples/${{matrix.example}}/${{matrix.example}}.ino" --board-options PartitionScheme=huge_app --build-property "build.extra_flags=-Wall -Werror" --log --clean -v
+          ${ARDUINO_CLI_DIR}/arduino-cli --config-dir ${ARDUINO_CLI_CONFIG_DIR} compile --fqbn ${{matrix.fqbn}} "${ARDUINO_USER_DIR}/libraries/${LIB_DIR_NAME}/examples/${{matrix.example}}/${{matrix.example}}.ino" -j 0 --warnings all --board-options PartitionScheme=huge_app --build-property "build.extra_flags=-Wall -Werror" --log --clean -v
