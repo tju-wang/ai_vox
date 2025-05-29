@@ -35,7 +35,7 @@ class I2sStdAudioOutputDevice : public AudioOutputDevice {
 #if SOC_I2S_HW_VERSION_1
       .msb_right = false,
 #else
-      .left_align = false,
+      .left_align = true,
       .big_endian = false,
       .bit_order_lsb = false,
 #endif
