@@ -119,7 +119,7 @@ void Display::Start() {
   lv_obj_set_style_border_width(content_left_, 0, 0);
 
   emotion_label_ = lv_label_create(content_left_);
-  lv_obj_set_style_text_font(emotion_label_, emotion_font);  // 自适应字体
+  lv_obj_set_style_text_font(emotion_label_, emotion_font, 0);  // 自适应字体，添加缺失的第三个参数
   lv_label_set_text(emotion_label_, FONT_AWESOME_AI_CHIP);
   lv_obj_center(emotion_label_);
   lv_obj_set_style_pad_top(emotion_label_, emotion_top_padding, 0);  // 自适应上边距
