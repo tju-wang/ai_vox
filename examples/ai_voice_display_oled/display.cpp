@@ -32,7 +32,7 @@ Display::Display(esp_lcd_panel_io_handle_t panel_io, esp_lcd_panel_handle_t pane
               .mirror_x = mirror_x,
               .mirror_y = mirror_y,
           },
-      .color_format=LV_COLOR_FORMAT_UNKNOWN,
+      .color_format = LV_COLOR_FORMAT_UNKNOWN,
       .flags =
           {
               .buff_dma = 1,
@@ -58,11 +58,11 @@ void Display::Start() {
 
   // 自适应布局计算
   // 基于屏幕尺寸计算合适的布局参数
-  int status_bar_height=1;
-  int content_left_width=1;
-  int emotion_top_padding=1;
-  int chat_message_top_padding=1;
-  const lv_font_t* emotion_font=&font_awesome_14_1;
+  int status_bar_height = 1;
+  int content_left_width = 1;
+  int emotion_top_padding = 1;
+  int chat_message_top_padding = 1;
+  const lv_font_t* emotion_font = &font_awesome_14_1;
   
   // 根据屏幕高度自适应调整布局
   if (height_ <= 32) {
