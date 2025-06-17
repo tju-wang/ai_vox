@@ -16,7 +16,7 @@ jobs:
       ARDUINO_USER_DIR: ${{github.workspace}}/arduino_user
     strategy:
       matrix:
-        example: ["esp32/ai_voice", "esp32/ai_voice_display_oled", "esp32/ai_voice_display_lcd"]
+        example: ["esp32s3/ai_voice", "esp32s3/ai_voice_display_oled", "esp32s3/ai_voice_display_lcd"]
 
     steps:
       - name: download arduino cli
@@ -50,4 +50,4 @@ jobs:
       - name: compile
         run: |
           echo "compile ${ARDUINO_USER_DIR}/libraries/${LIB_DIR_NAME}/examples/${{matrix.example}}"
-          ${ARDUINO_CLI_DIR}/arduino-cli --config-dir ${ARDUINO_CLI_CONFIG_DIR} compile --fqbn esp32:esp32:esp32 "${ARDUINO_USER_DIR}/libraries/${LIB_DIR_NAME}/examples/${{matrix.example}}" -j 0 --warnings all --board-options PartitionScheme=huge_app --build-property "build.extra_flags=-Wall -Werror" --log --clean -v
+          ${ARDUINO_CLI_DIR}/arduino-cli --config-dir ${ARDUINO_CLI_CONFIG_DIR} compile --fqbn esp32:esp32:esp32s3 "${ARDUINO_USER_DIR}/libraries/${LIB_DIR_NAME}/examples/${{matrix.example}}" -j 0 --warnings all --board-options "FlashSize=16M" --board-options "PartitionScheme=custom" --board-options "PSRAM=opi" --build-property "build.extra_flags=-Wall -Werror" --log --clean -v

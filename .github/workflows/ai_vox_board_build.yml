@@ -16,7 +16,7 @@ jobs:
       ARDUINO_USER_DIR: ${{github.workspace}}/arduino_user
     strategy:
       matrix:
-        example: ["ai_vox_board"]
+        example: ["ai_vox_board/ai_vox_board"]
         core_version: ["3.2.0"]
         fqbn: ["esp32:esp32:esp32s3"]
 
@@ -51,5 +51,5 @@ jobs:
           ${ARDUINO_CLI_DIR}/arduino-cli --config-dir ${ARDUINO_CLI_CONFIG_DIR} lib install --zip-path ai_vox.zip
       - name: compile
         run: |
-          echo "compile ${ARDUINO_USER_DIR}/libraries/${LIB_DIR_NAME}/examples/${{matrix.example}}/${{matrix.example}}.ino"
-          ${ARDUINO_CLI_DIR}/arduino-cli --config-dir ${ARDUINO_CLI_CONFIG_DIR} compile --fqbn ${{matrix.fqbn}} "${ARDUINO_USER_DIR}/libraries/${LIB_DIR_NAME}/examples/${{matrix.example}}/${{matrix.example}}.ino" -j 0 --warnings all --board-options "FlashSize=16M" --board-options "PartitionScheme=custom" --board-options "PSRAM=opi" --build-property "build.extra_flags=-Wall -Werror" --log --clean -v
+          echo "compile ${ARDUINO_USER_DIR}/libraries/${LIB_DIR_NAME}/examples/${{matrix.example}}"
+          ${ARDUINO_CLI_DIR}/arduino-cli --config-dir ${ARDUINO_CLI_CONFIG_DIR} compile --fqbn ${{matrix.fqbn}} "${ARDUINO_USER_DIR}/libraries/${LIB_DIR_NAME}/examples/${{matrix.example}}" -j 0 --warnings all --board-options "FlashSize=16M" --board-options "PartitionScheme=custom" --board-options "PSRAM=opi" --build-property "build.extra_flags=-Wall -Werror" --log --clean -v
