@@ -101,7 +101,11 @@ EngineImpl::EngineImpl()
       websocket_url_("wss://api.tenclass.net/xiaozhi/v1/"),
       websocket_headers_{
           {"Authorization", "Bearer test-token"},
-      } {
+      },
+#ifdef ARDUINO_ESP32S3_DEV
+      wake_net_([this]() { task_queue_.Enqueue([this]() { OnWakeUp(); }); }),
+#endif
+      task_queue_("AiVoxMain", 1024 * 4, tskIDLE_PRIORITY + 1) {
   CLOGD();
 }
 
@@ -183,14 +187,6 @@ void EngineImpl::Start(std::shared_ptr<AudioInputDevice> audio_input_device, std
 
   ChangeState(State::kInited);
   LoadProtocol();
-
-  auto ret = xTaskCreate(Loop, "AiVoxMain", 1024 * 4, this, tskIDLE_PRIORITY + 1, nullptr);
-  assert(ret == pdPASS);
-}
-
-void EngineImpl::Loop(void *self) {
-  reinterpret_cast<EngineImpl *>(self)->Loop();
-  vTaskDelete(nullptr);
 }
 
 void EngineImpl::OnButtonClick(void *button_handle, void *self) {
@@ -201,90 +197,8 @@ void EngineImpl::OnWebsocketEvent(void *self, esp_event_base_t base, int32_t eve
   reinterpret_cast<EngineImpl *>(self)->OnWebsocketEvent(base, event_id, event_data);
 }
 
-void EngineImpl::Loop() {
-loop_start:
-  auto message = message_queue_.Recevie();
-  if (!message.has_value()) {
-    goto loop_start;
-  }
-  switch (message->type()) {
-    case MessageType::kOnButtonClick: {
-      CLOGD("kOnButtonClick");
-      switch (state_) {
-        case State::kInited: {
-          LoadProtocol();
-          break;
-        }
-        case State::kStandby: {
-          ConnectWebSocket();
-          break;
-        }
-        case State::kListening: {
-          DisconnectWebSocket();
-          break;
-        }
-        case State::kSpeaking: {
-          AbortSpeaking();
-          break;
-        }
-        default: {
-          break;
-        }
-      }
-      break;
-    }
-
-    case MessageType::kOnOutputDataComsumed: {
-      CLOGD("kOnOutputDataComsumed");
-      OnAudioOutputDataConsumed();
-      break;
-    }
-    case MessageType::kOnWebsocketConnected: {
-      CLOGD("kOnWebsocketConnected");
-      OnWebSocketConnected();
-      break;
-    }
-    case MessageType::kOnWebsocketDisconnected: {
-      CLOGD("kOnWebsocketDisconnected");
-      audio_input_engine_.reset();
-      audio_output_engine_.reset();
-      if (web_socket_client_ != nullptr) {
-        esp_websocket_client_close(web_socket_client_, pdMS_TO_TICKS(5000));
-        esp_websocket_client_destroy(web_socket_client_);
-        web_socket_client_ = nullptr;
-      }
-      ChangeState(State::kInited);
-      break;
-    }
-    case MessageType::kOnWebsocketEventData: {
-      auto op_code = message->Read<uint8_t>();
-      auto data = message->Read<std::shared_ptr<std::vector<uint8_t>>>();
-      if (op_code && data) {
-        OnWebSocketEventData(*op_code, std::move(*data));
-      }
-      break;
-    }
-    case MessageType::kOnWebsocketFinish: {
-      CLOG("kOnWebsocketFinish");
-      audio_input_engine_.reset();
-      audio_output_engine_.reset();
-      if (web_socket_client_ != nullptr) {
-        esp_websocket_client_close(web_socket_client_, pdMS_TO_TICKS(5000));
-        esp_websocket_client_destroy(web_socket_client_);
-        web_socket_client_ = nullptr;
-      }
-      ChangeState(State::kStandby);
-      break;
-    }
-    default: {
-      break;
-    }
-  }
-  goto loop_start;
-}
-
 void EngineImpl::OnButtonClick() {
-  message_queue_.Send(MessageType::kOnButtonClick);
+  task_queue_.Enqueue([this]() { OnTriggered(); });
 }
 
 void EngineImpl::OnWebsocketEvent(esp_event_base_t base, int32_t event_id, void *event_data) {
@@ -296,27 +210,34 @@ void EngineImpl::OnWebsocketEvent(esp_event_base_t base, int32_t event_id, void 
     }
     case WEBSOCKET_EVENT_CONNECTED: {
       CLOGI("WEBSOCKET_EVENT_CONNECTED");
-      message_queue_.Send(MessageType::kOnWebsocketConnected);
+      task_queue_.Enqueue([this]() { OnWebSocketConnected(); });
       break;
     }
     case WEBSOCKET_EVENT_DISCONNECTED: {
       CLOGI("WEBSOCKET_EVENT_DISCONNECTED");
-      message_queue_.Send(MessageType::kOnWebsocketDisconnected);
+      task_queue_.Enqueue([this]() { OnWebSocketDisconnected(); });
       break;
     }
     case WEBSOCKET_EVENT_DATA: {
       if (data->fin) {
         if (recving_websocket_data_.empty()) {
-          Message message(MessageType::kOnWebsocketEventData);
-          message.Write(data->op_code);
-          message.Write(std::make_shared<std::vector<uint8_t>>(data->data_ptr, data->data_ptr + data->data_len));
-          message_queue_.Send(std::move(message));
+          std::vector<uint8_t> recving_websocket_data(data->data_ptr, data->data_ptr + data->data_len);
+          if (data->op_code == kWebsocketTextFrame) {
+            task_queue_.Enqueue(
+                [this, recving_websocket_data = std::move(recving_websocket_data)]() mutable { OnJsonData(std::move(recving_websocket_data)); });
+          } else if (data->op_code == kWebsocketBinaryFrame) {
+            task_queue_.Enqueue(
+                [this, recving_websocket_data = std::move(recving_websocket_data)]() mutable { OnAudioFrame(std::move(recving_websocket_data)); });
+          }
         } else {
           recving_websocket_data_.insert(recving_websocket_data_.end(), data->data_ptr, data->data_ptr + data->data_len);
-          Message message(MessageType::kOnWebsocketEventData);
-          message.Write(data->op_code);
-          message.Write(std::make_shared<std::vector<uint8_t>>(std::move(recving_websocket_data_)));
-          message_queue_.Send(std::move(message));
+          if (data->op_code == kWebsocketTextFrame) {
+            task_queue_.Enqueue(
+                [this, recving_websocket_data = std::move(recving_websocket_data_)]() mutable { OnJsonData(std::move(recving_websocket_data)); });
+          } else if (data->op_code == kWebsocketBinaryFrame) {
+            task_queue_.Enqueue(
+                [this, recving_websocket_data = std::move(recving_websocket_data_)]() mutable { OnAudioFrame(std::move(recving_websocket_data)); });
+          }
           recving_websocket_data_.clear();
         }
       } else {
@@ -330,7 +251,7 @@ void EngineImpl::OnWebsocketEvent(esp_event_base_t base, int32_t event_id, void 
     }
     case WEBSOCKET_EVENT_FINISH: {
       CLOGI("WEBSOCKET_EVENT_FINISH");
-      message_queue_.Send(MessageType::kOnWebsocketFinish);
+      task_queue_.Enqueue([this]() { OnWebSocketDisconnected(); });
       break;
     }
     default: {
@@ -339,23 +260,9 @@ void EngineImpl::OnWebsocketEvent(esp_event_base_t base, int32_t event_id, void 
   }
 }
 
-void EngineImpl::OnWebSocketEventData(const uint8_t op_code, std::shared_ptr<std::vector<uint8_t>> &&data) {
-  switch (op_code) {
-    case kWebsocketTextFrame: {
-      CLOGI("%.*s", static_cast<int>(data->size()), data->data());
-      OnJsonData(std::move(*data));
-      break;
-    }
-    case kWebsocketBinaryFrame: {
-      if (audio_output_engine_) {
-        audio_output_engine_->Write(std::move(*data));
-      }
-      break;
-    }
-    default: {
-      CLOGI("Unsupported WebSocket frame type: %u", op_code);
-      break;
-    }
+void EngineImpl::OnAudioFrame(std::vector<uint8_t> &&data) {
+  if (audio_output_engine_) {
+    audio_output_engine_->Write(std::move(data));
   }
 }
 
@@ -379,7 +286,8 @@ void EngineImpl::OnJsonData(std::vector<uint8_t> &&data) {
   CLOGI("Received JSON type: %s", type.c_str());
 
   if (type == "hello") {
-    if (state_ != State::kWebsocketConnected) {
+    const auto state = state_;
+    if (state_ != State::kWebsocketConnected && state_ != State::kWebsocketConnectedWithWakeup) {
       CLOGE("Invalid state: %u", state_);
       cJSON_Delete(root_json);
       return;
@@ -394,6 +302,19 @@ void EngineImpl::OnJsonData(std::vector<uint8_t> &&data) {
     SendIotDescriptions();
     SendIotUpdatedStates(true);
     StartListening();
+
+    if (state == State::kWebsocketConnectedWithWakeup) {
+      const auto root = cJSON_CreateObject();
+      cJSON_AddStringToObject(root, "session_id", session_id_.c_str());
+      cJSON_AddStringToObject(root, "type", "listen");
+      cJSON_AddStringToObject(root, "state", "detect");
+      cJSON_AddStringToObject(root, "text", "你好小智");
+      auto json_str = cJSON_PrintUnformatted(root);
+      CLOGI("Sending JSON: %s", json_str);
+      esp_websocket_client_send_text(web_socket_client_, json_str, strlen(json_str), portMAX_DELAY);
+      free(json_str);
+      cJSON_Delete(root);
+    }
   } else if (type == "goodbye") {
     auto session_id_json = cJSON_GetObjectItem(root_json, "session_id");
     std::string session_id;
@@ -408,24 +329,27 @@ void EngineImpl::OnJsonData(std::vector<uint8_t> &&data) {
     if (cJSON_IsString(state_json)) {
       if (strcmp("start", state_json->valuestring) == 0) {
         CLOG("tts start");
-        if (state_ != State::kListening) {
+
+        if (state_ == State::kSpeaking) {
+          CLOGI("already speaking");
+          cJSON_Delete(root_json);
+          return;
+        } else if (state_ != State::kListening) {
           CLOGW("invalid state: %u", state_);
           cJSON_Delete(root_json);
           return;
         }
+
         audio_input_engine_.reset();
-        audio_output_engine_ = std::make_shared<AudioOutputEngine>([this](AudioOutputEngine::Event event) {
-          if (event == AudioOutputEngine::Event::kOnDataComsumed) {
-            CLOGD("kOnDataComsumed");
-            message_queue_.Send(MessageType::kOnOutputDataComsumed);
-          }
-        });
-        audio_output_engine_->Open(audio_output_device_);
+#ifdef ARDUINO_ESP32S3_DEV
+        wake_net_.Start(audio_input_device_);
+#endif
+        audio_output_engine_ = std::make_shared<AudioOutputEngine>(audio_output_device_);
         ChangeState(State::kSpeaking);
       } else if (strcmp("stop", state_json->valuestring) == 0) {
         CLOG("tts stop");
         if (audio_output_engine_) {
-          audio_output_engine_->NotifyDataEnd();
+          audio_output_engine_->NotifyDataEnd([this]() { task_queue_.Enqueue([this]() { OnAudioOutputDataConsumed(); }); });
         }
       } else if (strcmp("sentence_start", state_json->valuestring) == 0) {
         auto text = cJSON_GetObjectItem(root_json, "text");
@@ -503,11 +427,14 @@ void EngineImpl::OnJsonData(std::vector<uint8_t> &&data) {
 
 void EngineImpl::OnWebSocketConnected() {
   CLOGI();
-  if (state_ != State::kWebsocketConnecting) {
-    CLOG("invalid state: %u", state_);
+  if (state_ == State::kWebsocketConnecting) {
+    ChangeState(State::kWebsocketConnected);
+  } else if (state_ == State::kWebsocketConnectingWithWakeup) {
+    ChangeState(State::kWebsocketConnectedWithWakeup);
+  } else {
+    CLOGE("invalid state: %u", state_);
     return;
   }
-  ChangeState(State::kWebsocketConnected);
 
   auto const message = cJSON_CreateObject();
   cJSON_AddStringToObject(message, "type", "hello");
@@ -529,6 +456,21 @@ void EngineImpl::OnWebSocketConnected() {
   cJSON_Delete(message);
 }
 
+void EngineImpl::OnWebSocketDisconnected() {
+  CLOGI();
+  audio_input_engine_.reset();
+  audio_output_engine_.reset();
+  if (web_socket_client_ != nullptr) {
+    esp_websocket_client_close(web_socket_client_, pdMS_TO_TICKS(5000));
+    esp_websocket_client_destroy(web_socket_client_);
+    web_socket_client_ = nullptr;
+  }
+#ifdef ARDUINO_ESP32S3_DEV
+  wake_net_.Start(audio_input_device_);
+#endif
+  ChangeState(State::kStandby);
+}
+
 void EngineImpl::OnAudioOutputDataConsumed() {
   CLOGI();
   if (state_ != State::kSpeaking) {
@@ -537,6 +479,52 @@ void EngineImpl::OnAudioOutputDataConsumed() {
   }
   SendIotUpdatedStates(false);
   StartListening();
+}
+
+void EngineImpl::OnTriggered() {
+  CLOGI();
+  switch (state_) {
+    case State::kInited: {
+      LoadProtocol();
+      break;
+    }
+    case State::kStandby: {
+      if (ConnectWebSocket()) {
+        ChangeState(State::kWebsocketConnecting);
+      }
+      break;
+    }
+    case State::kListening: {
+      DisconnectWebSocket();
+      break;
+    }
+    case State::kSpeaking: {
+      AbortSpeaking();
+      break;
+    }
+    default: {
+      break;
+    }
+  }
+}
+
+void EngineImpl::OnWakeUp() {
+  CLOGI();
+  switch (state_) {
+    case State::kStandby: {
+      if (ConnectWebSocket()) {
+        ChangeState(State::kWebsocketConnectingWithWakeup);
+      }
+      break;
+    }
+    case State::kSpeaking: {
+      AbortSpeaking("wake_word_detected");
+      break;
+    }
+    default: {
+      break;
+    }
+  }
 }
 
 void EngineImpl::LoadProtocol() {
@@ -573,13 +561,15 @@ void EngineImpl::LoadProtocol() {
     ChangeState(State::kInited);
     return;
   }
-
+#ifdef ARDUINO_ESP32S3_DEV
+  wake_net_.Start(audio_input_device_);
+#endif
   ChangeState(State::kStandby);
   return;
 }
 
 void EngineImpl::StartListening() {
-  if (state_ != State::kWebsocketConnected && state_ != State::kSpeaking) {
+  if (state_ != State::kWebsocketConnected && state_ != State::kWebsocketConnectedWithWakeup && state_ != State::kSpeaking) {
     CLOG("invalid state: %u", state_);
     return;
   }
@@ -597,8 +587,11 @@ void EngineImpl::StartListening() {
   cJSON_Delete(root);
 
   audio_output_engine_.reset();
+#ifdef ARDUINO_ESP32S3_DEV
+  wake_net_.Stop();
+#endif
   audio_input_engine_ = std::make_shared<AudioInputEngine>(audio_input_device_, [this](std::vector<uint8_t> &&data) {
-    esp_websocket_client_send_bin(web_socket_client_, reinterpret_cast<const char *>(data.data()), data.size(), portMAX_DELAY);
+    esp_websocket_client_send_bin(web_socket_client_, reinterpret_cast<const char *>(data.data()), data.size(), pdMS_TO_TICKS(3000));
   });
   ChangeState(State::kListening);
 }
@@ -612,6 +605,25 @@ void EngineImpl::AbortSpeaking() {
   auto const message = cJSON_CreateObject();
   cJSON_AddStringToObject(message, "session_id", session_id_.c_str());
   cJSON_AddStringToObject(message, "type", "abort");
+  const auto text = cJSON_PrintUnformatted(message);
+  const auto length = strlen(text);
+  CLOGI("sending text: %.*s", static_cast<int>(length), text);
+  esp_websocket_client_send_text(web_socket_client_, text, length, pdMS_TO_TICKS(5000));
+  cJSON_free(text);
+  cJSON_Delete(message);
+  CLOG("OK");
+}
+
+void EngineImpl::AbortSpeaking(const std::string &reason) {
+  if (state_ != State::kSpeaking) {
+    CLOGE("invalid state: %d", state_);
+    return;
+  }
+
+  auto const message = cJSON_CreateObject();
+  cJSON_AddStringToObject(message, "session_id", session_id_.c_str());
+  cJSON_AddStringToObject(message, "type", "abort");
+  cJSON_AddStringToObject(message, "reason", reason.c_str());
   const auto text = cJSON_PrintUnformatted(message);
   const auto length = strlen(text);
   CLOGI("sending text: %.*s", static_cast<int>(length), text);
@@ -654,10 +666,9 @@ bool EngineImpl::ConnectWebSocket() {
   esp_websocket_client_append_header(web_socket_client_, "Client-Id", uuid_.c_str());
   esp_websocket_register_events(web_socket_client_, WEBSOCKET_EVENT_ANY, &EngineImpl::OnWebsocketEvent, this);
   CLOGI("esp_websocket_client_start");
-  esp_websocket_client_start(web_socket_client_);
-  ChangeState(State::kWebsocketConnecting);
-  CLOGI("websocket client start");
-  return true;
+  const auto ret = esp_websocket_client_start(web_socket_client_);
+  CLOGI("websocket client start: %d", ret);
+  return ret == ESP_OK;
 }
 
 void EngineImpl::DisconnectWebSocket() {
@@ -667,7 +678,9 @@ void EngineImpl::DisconnectWebSocket() {
 
   audio_input_engine_.reset();
   audio_output_engine_.reset();
-
+#ifdef ARDUINO_ESP32S3_DEV
+  wake_net_.Start(audio_input_device_);
+#endif
   esp_websocket_client_close(web_socket_client_, pdMS_TO_TICKS(5000));
 }
 
@@ -708,7 +721,9 @@ void EngineImpl::ChangeState(const State new_state) {
       case State::kLoadingProtocol:
         return ChatState::kIniting;
       case State::kWebsocketConnecting:
+      case State::kWebsocketConnectingWithWakeup:
         return ChatState::kConnecting;
+      case State::kWebsocketConnectedWithWakeup:
       case State::kWebsocketConnected:
         return ChatState::kConnecting;
       case State::kStandby:

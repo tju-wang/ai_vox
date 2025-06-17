@@ -21,7 +21,8 @@
 #include "ai_vox_engine.h"
 #include "espressif_esp_websocket_client/esp_websocket_client.h"
 #include "iot/iot_manager.h"
-#include "messaging/message_queue.h"
+#include "task_queue/task_queue.h"
+#include "wake_net/wake_net.h"
 
 struct button_dev_t;
 class AudioInputEngine;
@@ -47,39 +48,31 @@ class EngineImpl : public Engine {
     kInited,
     kLoadingProtocol,
     kWebsocketConnecting,
+    kWebsocketConnectingWithWakeup,
     kWebsocketConnected,
+    kWebsocketConnectedWithWakeup,
     kStandby,
     kListening,
     kSpeaking,
   };
 
-  enum class MessageType : uint8_t {
-    kOnButtonClick,
-    kOnWebsocketConnected,
-    kOnWebsocketDisconnected,
-    kOnWebsocketEventData,
-    kOnWebsocketFinish,
-    kOnOutputDataComsumed,
-  };
-
-  // using Message = Message<MessageType>;
-  // using MessageQueue = MessageQueue<MessageType>;
-
-  static void Loop(void *self);
   static void OnButtonClick(void *button_handle, void *usr_data);
   static void OnWebsocketEvent(void *handler_args, esp_event_base_t base, int32_t event_id, void *event_data);
 
-  void Loop();
   void OnButtonClick();
   void OnWebsocketEvent(esp_event_base_t base, int32_t event_id, void *event_data);
-  void OnWebSocketEventData(const uint8_t op_code, std::shared_ptr<std::vector<uint8_t>> &&data);
+  void OnAudioFrame(std::vector<uint8_t> &&data);
   void OnJsonData(std::vector<uint8_t> &&data);
   void OnWebSocketConnected();
+  void OnWebSocketDisconnected();
   void OnAudioOutputDataConsumed();
+  void OnTriggered();
+  void OnWakeUp();
 
   void LoadProtocol();
   void StartListening();
   void AbortSpeaking();
+  void AbortSpeaking(const std::string &reason);
   bool ConnectWebSocket();
   void DisconnectWebSocket();
   void SendIotDescriptions();
@@ -87,7 +80,6 @@ class EngineImpl : public Engine {
   void ChangeState(const State new_state);
 
   mutable std::mutex mutex_;
-  MessageQueue<MessageType> message_queue_;
   State state_ = State::kIdle;
   button_dev_t *button_handle_ = nullptr;
   gpio_num_t trigger_pin_ = GPIO_NUM_0;
@@ -104,6 +96,10 @@ class EngineImpl : public Engine {
   std::string ota_url_;
   std::string websocket_url_;
   std::map<std::string, std::string> websocket_headers_;
+#ifdef ARDUINO_ESP32S3_DEV
+  WakeNet wake_net_;
+#endif
+  TaskQueue task_queue_;
 };
 }  // namespace ai_vox
 
