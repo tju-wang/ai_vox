@@ -6,34 +6,34 @@
 
 #include <esp_wifi.h>
 
-#include <functional>
 #include <mutex>
 #include <string>
 
 class Wifi {
  public:
-  enum class Event : uint8_t {
-    kConnected,
-    kDisconnected,
-  };
-
-  using EventHandler = void(Event event);
-
   static Wifi& GetInstance();
-  void SetEventHandler(const std::function<EventHandler>& event_handler);
   void Connect(const std::string& ssid, const std::string& password);
-  bool Reconnect();
+  bool IsConnected();
+  bool IsGotIp();
+  esp_netif_ip_info_t ip_info() const {
+    std::lock_guard<std::mutex> lock(mutex_);
+    return ip_info_;
+  }
 
  private:
   Wifi();
+  Wifi(const Wifi&) = delete;
+  Wifi& operator=(const Wifi&) = delete;
+
   static void WifiEventHandler(void* arg, esp_event_base_t event_base, int32_t event_id, void* event_data);
   static void IpEventHandler(void* arg, esp_event_base_t event_base, int32_t event_id, void* event_data);
 
   void WifiEventHandler(esp_event_base_t event_base, int32_t event_id, void* event_data);
   void IpEventHandler(esp_event_base_t event_base, int32_t event_id, void* event_data);
 
-  std::function<EventHandler> event_handler_;
+  mutable std::mutex mutex_;
   EventGroupHandle_t event_group_ = nullptr;
+  esp_netif_ip_info_t ip_info_;
 };
 
 #endif

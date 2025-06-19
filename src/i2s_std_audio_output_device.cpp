@@ -76,10 +76,10 @@ void I2sStdAudioOutputDevice::SetVolume(uint16_t volume) {
   volume_factor_ = pow(double(volume_) / 100.0, 2) * 65536;
 }
 
-size_t I2sStdAudioOutputDevice::Write(std::vector<int16_t>&& pcm) {
-  std::vector<int32_t> buffer(pcm.size());
+size_t I2sStdAudioOutputDevice::Write(int16_t* pcm, size_t samples) {
+  std::vector<int32_t> buffer(samples);
 
-  for (size_t i = 0; i < pcm.size(); i++) {
+  for (size_t i = 0; i < samples; i++) {
     int64_t temp = int64_t(pcm[i]) * volume_factor_;
     if (temp > INT32_MAX) {
       buffer[i] = INT32_MAX;

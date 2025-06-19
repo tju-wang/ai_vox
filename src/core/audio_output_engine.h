@@ -12,23 +12,25 @@
 #include <vector>
 
 #include "../audio_output_device.h"
+#include "flex_array/flex_array.h"
 #include "task_queue/task_queue.h"
 
 class OpusDecoder;
 class AudioOutputEngine {
  public:
-  AudioOutputEngine(std::shared_ptr<ai_vox::AudioOutputDevice> audio_output_device);
+  AudioOutputEngine(std::shared_ptr<ai_vox::AudioOutputDevice> audio_output_device, const uint32_t frame_duration);
   ~AudioOutputEngine();
 
-  void Write(std::vector<uint8_t>&& data);
+  void Write(FlexArray<uint8_t>&& data);
   void NotifyDataEnd(std::function<void()>&& callback);
 
  private:
   static void Loop(void* self);
   void Loop();
-  void ProcessData(std::vector<uint8_t>&& data);
+  void ProcessData(FlexArray<uint8_t>&& data);
 
   std::shared_ptr<ai_vox::AudioOutputDevice> audio_output_device_;
   struct OpusDecoder* opus_decoder_ = nullptr;
   TaskQueue* task_queue_ = nullptr;
+  const uint32_t samples_ = 0;
 };

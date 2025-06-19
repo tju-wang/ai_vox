@@ -21,7 +21,7 @@ class I2sStdAudioOutputDevice : public AudioOutputDevice {
  private:
   bool Open(uint32_t sample_rate) override;
   void Close() override;
-  size_t Write(std::vector<int16_t>&& pcm) override;
+  size_t Write(int16_t* pcm, size_t samples) override;
 
   i2s_chan_handle_t i2s_tx_handle_ = nullptr;
   i2s_std_slot_config_t slot_cfg_ = {

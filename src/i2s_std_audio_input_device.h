@@ -17,7 +17,7 @@ class I2sStdAudioInputDevice : public AudioInputDevice {
  private:
   bool Open(uint32_t sample_rate) override;
   void Close() override;
-  std::vector<int16_t> Read(uint32_t samples) override;
+  size_t Read(int16_t* buffer, uint32_t samples) override;
 
   i2s_chan_handle_t i2s_rx_handle_ = nullptr;
   i2s_std_slot_config_t slot_cfg_ = {

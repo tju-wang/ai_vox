@@ -1,4 +1,3 @@
-#include <WiFi.h>
 #include <driver/i2c_master.h>
 #include <esp_lcd_io_i2c.h>
 #include <esp_lcd_panel_ops.h>
@@ -9,6 +8,7 @@
 #include "display.h"
 #include "i2s_std_audio_input_device.h"
 #include "i2s_std_audio_output_device.h"
+#include "wifi.h"
 
 #ifndef ARDUINO_ESP32_DEV
 #error "This example only supports ESP32-Dev board."
@@ -229,6 +229,32 @@ void PrintMemInfo() {
   }
 }
 #endif
+
+void WifiConnect() {
+  auto& wifi = Wifi::GetInstance();
+
+  printf("Connecting to WiFi, ssid: %s, password: %s\n", WIFI_SSID, WIFI_PASSWORD);
+  wifi.Connect(WIFI_SSID, WIFI_PASSWORD);
+
+  uint32_t attempt_count = 0;
+  while (!wifi.IsConnected()) {
+    printf("Connecting to WiFi (attempt %" PRIu32 ")... ssid: %s\n", attempt_count++, WIFI_SSID);
+    delay(800);
+  }
+
+  printf("Wifi Connected. Getting IP...\n");
+  while (!wifi.IsGotIp()) {
+    delay(10);
+  }
+  printf("Got wifi info\n");
+
+  const auto ip_info = wifi.ip_info();
+  printf("IP Info:\n");
+  printf("- ip: " IPSTR "\n", IP2STR(&ip_info.ip));
+  printf("- mask: " IPSTR "\n", IP2STR(&ip_info.netmask));
+  printf("- gw: " IPSTR "\n", IP2STR(&ip_info.gw));
+}
+
 }  // namespace
 
 void setup() {
@@ -238,20 +264,7 @@ void setup() {
   InitDisplay();
 
   g_display->ShowStatus("Wifi connecting...");
-
-  if (heap_caps_get_total_size(MALLOC_CAP_SPIRAM) > 0) {
-    WiFi.useStaticBuffers(true);
-  } else {
-    WiFi.useStaticBuffers(false);
-  }
-
-  WiFi.begin(WIFI_SSID, WIFI_PASSWORD);
-  while (WiFi.status() != WL_CONNECTED) {
-    printf("Connecting to WiFi, ssid: %s, password: %s\n", WIFI_SSID, WIFI_PASSWORD);
-    delay(1000);
-  }
-
-  printf("WiFi connected, IP address: %s\n", WiFi.localIP().toString().c_str());
+  WifiConnect();
   g_display->ShowStatus("Wifi connected");
 
   pinMode(kLedPin, OUTPUT);

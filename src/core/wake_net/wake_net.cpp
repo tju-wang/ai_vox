@@ -79,8 +79,11 @@ void WakeNet::Stop() {
 }
 
 void WakeNet::FeedData(std::shared_ptr<ai_vox::AudioInputDevice> &&audio_input_device, const uint32_t afe_chunksize, const uint32_t channels) {
-  auto pcm = audio_input_device->Read(afe_chunksize * channels);
-  g_afe_handle.feed(afe_data_, pcm.data());
+  auto pcm = new int16_t[afe_chunksize * channels];
+  audio_input_device->Read(pcm, afe_chunksize * channels);
+  g_afe_handle.feed(afe_data_, pcm);
+  delete[] pcm;
+
   feed_task_->Enqueue([this, audio_input_device = std::move(audio_input_device), afe_chunksize, channels]() mutable {
     FeedData(std::move(audio_input_device), afe_chunksize, channels);
   });

@@ -6,12 +6,11 @@
 
 #include <cstring>
 
-#include "../clogger/clogger.h"
-
 namespace {
 enum Status : EventBits_t {
   kStationStarted = 1 << 0,
   kWifiConnected = 1 << 1,
+  kGotIp = 1 << 2,
 };
 }  // namespace
 
@@ -23,6 +22,7 @@ Wifi& Wifi::GetInstance() {
 }
 
 Wifi::Wifi() : event_group_(xEventGroupCreate()) {
+  memset(&ip_info_, sizeof(ip_info_), 0);
   ESP_ERROR_CHECK(esp_netif_init());
   esp_event_loop_create_default();
   ESP_ERROR_CHECK(esp_event_handler_register(WIFI_EVENT, ESP_EVENT_ANY_ID, &WifiEventHandler, this));
@@ -48,10 +48,6 @@ Wifi::Wifi() : event_group_(xEventGroupCreate()) {
   ESP_ERROR_CHECK(esp_wifi_init(&cfg));
 }
 
-void Wifi::SetEventHandler(const std::function<EventHandler>& event_handler) {
-  event_handler_ = event_handler;
-}
-
 void Wifi::WifiEventHandler(void* arg, esp_event_base_t event_base, int32_t event_id, void* event_data) {
   reinterpret_cast<Wifi*>(arg)->WifiEventHandler(event_base, event_id, event_data);
 }
@@ -63,16 +59,20 @@ void Wifi::IpEventHandler(void* arg, esp_event_base_t event_base, int32_t event_
 void Wifi::WifiEventHandler(esp_event_base_t event_base, int32_t event_id, void* event_data) {
   switch (event_id) {
     case WIFI_EVENT_STA_START: {
-      CLOG("WIFI_EVENT_STA_START");
+      printf("WIFI_EVENT_STA_START\n");
       xEventGroupSetBits(event_group_, kStationStarted);
       break;
     }
     case WIFI_EVENT_STA_DISCONNECTED: {
-      CLOG("WIFI_EVENT_STA_DISCONNECTED");
+      printf("WIFI_EVENT_STA_DISCONNECTED\n");
+      memset(&ip_info_, sizeof(ip_info_), 0);
+      xEventGroupClearBits(event_group_, kGotIp);
       xEventGroupClearBits(event_group_, kWifiConnected);
-      if (event_handler_) {
-        event_handler_(Event::kDisconnected);
-      }
+      break;
+    }
+    case WIFI_EVENT_STA_CONNECTED: {
+      printf("WIFI_EVENT_STA_CONNECTED\n");
+      xEventGroupSetBits(event_group_, kWifiConnected);
       break;
     }
     default: {
@@ -82,15 +82,14 @@ void Wifi::WifiEventHandler(esp_event_base_t event_base, int32_t event_id, void*
 }
 
 void Wifi::IpEventHandler(esp_event_base_t event_base, int32_t event_id, void* event_data) {
-  ip_event_got_ip_t* event;
   switch (event_id) {
     case IP_EVENT_STA_GOT_IP: {
-      event = (ip_event_got_ip_t*)event_data;
-      CLOG("IP_EVENT_STA_GOT_IP");
-      CLOG("got ip:" IPSTR, IP2STR(&event->ip_info.ip));
-      if (event_handler_) {
-        event_handler_(Event::kConnected);
+      printf("IP_EVENT_STA_GOT_IP\n");
+      {
+        std::lock_guard<std::mutex> lock(mutex_);
+        ip_info_ = reinterpret_cast<ip_event_got_ip_t*>(event_data)->ip_info;
       }
+      xEventGroupSetBits(event_group_, kGotIp);
       break;
     }
     default: {
@@ -101,7 +100,7 @@ void Wifi::IpEventHandler(esp_event_base_t event_base, int32_t event_id, void* e
 
 void Wifi::Connect(const std::string& ssid, const std::string& password) {
   if (0 != (xEventGroupGetBits(event_group_) && kStationStarted)) {
-    CLOG("wifi sta already started");
+    printf("wifi sta already started\n");
     return;
   }
 
@@ -109,25 +108,18 @@ void Wifi::Connect(const std::string& ssid, const std::string& password) {
   memset(&wifi_config, 0, sizeof(wifi_config));
   strncpy(reinterpret_cast<char*>(wifi_config.sta.ssid), ssid.c_str(), sizeof(wifi_config.sta.ssid) - 1);
   strncpy(reinterpret_cast<char*>(wifi_config.sta.password), password.c_str(), sizeof(wifi_config.sta.password) - 1);
-  CLOG("ssid: %s", wifi_config.sta.ssid);
-  CLOG("password: %s", wifi_config.sta.password);
 
   ESP_ERROR_CHECK(esp_wifi_set_mode(WIFI_MODE_STA));
   ESP_ERROR_CHECK(esp_wifi_set_config(WIFI_IF_STA, &wifi_config));
   ESP_ERROR_CHECK(esp_wifi_start());
   xEventGroupWaitBits(event_group_, kStationStarted, pdFALSE, pdFALSE, portMAX_DELAY);
   ESP_ERROR_CHECK(esp_wifi_connect());
-  CLOG("wifi connecting");
 }
 
-bool Wifi::Reconnect() {
-  if (0 == (xEventGroupGetBits(event_group_) && kStationStarted)) {
-    CLOG("wifi sta not started");
-    return false;
-  }
+bool Wifi::IsConnected() {
+  return (xEventGroupGetBits(event_group_) & kWifiConnected) != 0;
+}
 
-  ESP_ERROR_CHECK(esp_wifi_disconnect());
-  ESP_ERROR_CHECK(esp_wifi_connect());
-  CLOG("wifi reconnecting");
-  return true;
+bool Wifi::IsGotIp() {
+  return (xEventGroupGetBits(event_group_) & kGotIp) != 0;
 }
