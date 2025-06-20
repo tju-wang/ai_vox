@@ -68,6 +68,8 @@ void Wifi::WifiEventHandler(esp_event_base_t event_base, int32_t event_id, void*
       memset(&ip_info_, sizeof(ip_info_), 0);
       xEventGroupClearBits(event_group_, kGotIp);
       xEventGroupClearBits(event_group_, kWifiConnected);
+      ESP_ERROR_CHECK(esp_wifi_disconnect());
+      ESP_ERROR_CHECK(esp_wifi_connect());
       break;
     }
     case WIFI_EVENT_STA_CONNECTED: {
