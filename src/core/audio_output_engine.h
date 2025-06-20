@@ -12,49 +12,25 @@
 #include <vector>
 
 #include "../audio_output_device.h"
-#include "messaging/message.h"
-#include "messaging/message_queue.h"
+#include "flex_array/flex_array.h"
+#include "task_queue/task_queue.h"
 
 class OpusDecoder;
 class AudioOutputEngine {
  public:
-  enum class Event : uint8_t {
-    kOnDataComsumed = 1 << 0,
-  };
-
-  using EventHandler = std::function<void(Event)>;
-
-  AudioOutputEngine(const EventHandler& handler);
+  AudioOutputEngine(std::shared_ptr<ai_vox::AudioOutputDevice> audio_output_device, const uint32_t frame_duration);
   ~AudioOutputEngine();
 
-  void Open(std::shared_ptr<ai_vox::AudioOutputDevice> audio_output_device);
-  void Close();
-  void Write(std::vector<uint8_t>&& data);
-  void NotifyDataEnd();
+  void Write(FlexArray<uint8_t>&& data);
+  void NotifyDataEnd(std::function<void()>&& callback);
 
  private:
-  enum class State : uint8_t {
-    kIdle,
-    kRunning,
-  };
-
-  enum class MessageType : uint8_t {
-    kOpen,
-    kClose,
-    kData,
-    kDataEnd,
-  };
-
-  // using Message = Message<MessageType>;
-  // using MessageQueue = MessageQueue<MessageType>;
-
   static void Loop(void* self);
   void Loop();
+  void ProcessData(FlexArray<uint8_t>&& data);
 
-  std::mutex mutex_;
-  State state_ = State::kIdle;
+  std::shared_ptr<ai_vox::AudioOutputDevice> audio_output_device_;
   struct OpusDecoder* opus_decoder_ = nullptr;
-  uint32_t frame_size_ = 0;
-  EventHandler handler_;
-  MessageQueue<MessageType> message_queue_;
+  TaskQueue* task_queue_ = nullptr;
+  const uint32_t samples_ = 0;
 };

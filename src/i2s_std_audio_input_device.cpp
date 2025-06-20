@@ -62,21 +62,16 @@ I2sStdAudioInputDevice::~I2sStdAudioInputDevice() {
   Close();
 }
 
-std::vector<int16_t> I2sStdAudioInputDevice::Read(uint32_t samples) {
-  if (nullptr == i2s_rx_handle_) {
-    return std::vector<int16_t>();
-  }
-
-  std::vector<int32_t> data(samples);
+size_t I2sStdAudioInputDevice::Read(int16_t* buffer, uint32_t samples) {
+  auto raw_32bit_samples = new int32_t[samples];
   size_t bytes_read = 0;
-  i2s_channel_read(i2s_rx_handle_, data.data(), samples * sizeof(data[0]), &bytes_read, 1000);
+  i2s_channel_read(i2s_rx_handle_, raw_32bit_samples, samples * sizeof(raw_32bit_samples[0]), &bytes_read, 1000);
 
-  std::vector<int16_t> pcm(samples);
   for (int i = 0; i < samples; i++) {
-    int32_t value = data[i] >> 12;
-    pcm[i] = (value > INT16_MAX) ? INT16_MAX : (value < -INT16_MAX) ? -INT16_MAX : (int16_t)value;
+    int32_t value = raw_32bit_samples[i] >> 12;
+    buffer[i] = (value > INT16_MAX) ? INT16_MAX : (value < -INT16_MAX) ? -INT16_MAX : (int16_t)value;
   }
-
-  return pcm;
+  delete[] raw_32bit_samples;
+  return samples;
 }
 }  // namespace ai_vox

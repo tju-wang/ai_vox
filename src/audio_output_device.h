@@ -15,7 +15,7 @@ class AudioOutputDevice {
   virtual ~AudioOutputDevice() = default;
   virtual bool Open(uint32_t sample_rate) = 0;
   virtual void Close() = 0;
-  virtual size_t Write(std::vector<int16_t>&& pcm) = 0;
+  virtual size_t Write(int16_t* pcm, size_t samples) = 0;
   virtual void SetVolume(uint16_t volume) = 0;
   virtual uint16_t volume() const = 0;
 };

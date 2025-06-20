@@ -2,9 +2,9 @@ name: Arduino ESP32 Build
 
 on:
   push:
-    branches: ["main"]
+    branches: ["main", "v*"]
   pull_request:
-    branches: ["main"]
+    branches: ["main", "v*"]
 
 jobs:
   build:
@@ -16,9 +16,7 @@ jobs:
       ARDUINO_USER_DIR: ${{github.workspace}}/arduino_user
     strategy:
       matrix:
-        example: ["ai_voice", "ai_voice_display_oled", "ai_voice_display_lcd"]
-        core_version: ["3.2.0"]
-        fqbn: ["esp32:esp32:esp32", "esp32:esp32:esp32s3"]
+        example: ["esp32/ai_voice", "esp32/ai_voice_display_oled", "esp32/ai_voice_display_lcd"]
 
     steps:
       - name: download arduino cli
@@ -35,7 +33,7 @@ jobs:
           ${ARDUINO_CLI_DIR}/arduino-cli --config-dir ${ARDUINO_CLI_CONFIG_DIR} config set directories.user ${ARDUINO_USER_DIR}
           ${ARDUINO_CLI_DIR}/arduino-cli --config-dir ${ARDUINO_CLI_CONFIG_DIR} config set library.enable_unsafe_install true
           ${ARDUINO_CLI_DIR}/arduino-cli --config-dir ${ARDUINO_CLI_CONFIG_DIR} config dump
-          ${ARDUINO_CLI_DIR}/arduino-cli --config-dir ${ARDUINO_CLI_CONFIG_DIR} core install esp32:esp32@${{matrix.core_version}}
+          ${ARDUINO_CLI_DIR}/arduino-cli --config-dir ${ARDUINO_CLI_CONFIG_DIR} core install esp32:esp32@3.2.0
       - name: install lib lvgl@9.2.2
         run: |
           ${ARDUINO_CLI_DIR}/arduino-cli --config-dir ${ARDUINO_CLI_CONFIG_DIR} lib install "lvgl@9.2.2"
@@ -51,5 +49,5 @@ jobs:
           ${ARDUINO_CLI_DIR}/arduino-cli --config-dir ${ARDUINO_CLI_CONFIG_DIR} lib install --zip-path ai_vox.zip
       - name: compile
         run: |
-          echo "compile ${ARDUINO_USER_DIR}/libraries/${LIB_DIR_NAME}/examples/${{matrix.example}}/${{matrix.example}}.ino"
-          ${ARDUINO_CLI_DIR}/arduino-cli --config-dir ${ARDUINO_CLI_CONFIG_DIR} compile --fqbn ${{matrix.fqbn}} "${ARDUINO_USER_DIR}/libraries/${LIB_DIR_NAME}/examples/${{matrix.example}}/${{matrix.example}}.ino" -j 0 --warnings all --board-options PartitionScheme=huge_app --build-property "build.extra_flags=-Wall -Werror" --log --clean -v
+          echo "compile ${ARDUINO_USER_DIR}/libraries/${LIB_DIR_NAME}/examples/${{matrix.example}}"
+          ${ARDUINO_CLI_DIR}/arduino-cli --config-dir ${ARDUINO_CLI_CONFIG_DIR} compile --fqbn esp32:esp32:esp32 "${ARDUINO_USER_DIR}/libraries/${LIB_DIR_NAME}/examples/${{matrix.example}}" -j 0 --warnings all --board-options PartitionScheme=huge_app --build-property "build.extra_flags=-Wall -Werror" --log --clean -v

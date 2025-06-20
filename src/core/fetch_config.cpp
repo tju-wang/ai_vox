@@ -178,16 +178,10 @@ std::optional<Config> GetConfigFromServer(const std::string& url, const std::str
     return std::nullopt;
   }
 
-  err = esp_http_client_set_method(client, HTTP_METHOD_POST);
-  if (err != ESP_OK) {
-    CLOGE("esp_http_client_set_method failed. Error: %s", esp_err_to_name(err));
-    esp_http_client_cleanup(client);
-    return std::nullopt;
-  }
-
   auto wlen = esp_http_client_write(client, post_json.data(), post_json.length());
   if (wlen < 0) {
     CLOGE("esp_http_client_write failed.");
+    esp_http_client_close(client);
     esp_http_client_cleanup(client);
     return std::nullopt;
   }
@@ -195,18 +189,19 @@ std::optional<Config> GetConfigFromServer(const std::string& url, const std::str
   auto content_length = esp_http_client_fetch_headers(client);
   if (content_length < 0) {
     CLOGE("esp_http_client_fetch_headers failed.");
+    esp_http_client_close(client);
     esp_http_client_cleanup(client);
     return std::nullopt;
   }
 
-  std::vector<char> response(content_length + 1);
-  response[content_length] = '\0';
-  esp_http_client_read_response(client, response.data(), content_length);
+  std::vector<uint8_t> response(content_length);
+  esp_http_client_read_response(client, reinterpret_cast<char*>(response.data()), content_length);
+  esp_http_client_close(client);
   esp_http_client_cleanup(client);
 
-  CLOG("response:%s", response.data());
+  CLOGI("response:%.*s", static_cast<int>(response.size()), response.data());
 
-  auto* const root = cJSON_Parse(response.data());
+  auto* const root = cJSON_ParseWithLength(reinterpret_cast<const char*>(response.data()), response.size());
   if (!cJSON_IsObject(root)) {
     cJSON_Delete(root);
     return std::nullopt;
