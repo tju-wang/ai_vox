@@ -741,10 +741,14 @@ void EngineImpl::ChangeState(const State new_state) {
     }
   };
 
-  if (observer_) {
-    observer_->PushEvent(Observer::StateChangedEvent{convert_state(state_), convert_state(new_state)});
+  const auto new_chat_state = convert_state(new_state);
+
+  if (new_chat_state != chat_state_ && observer_) {
+    observer_->PushEvent(Observer::StateChangedEvent{chat_state_, new_chat_state});
   }
+
   state_ = new_state;
+  chat_state_ = new_chat_state;
 }
 
 }  // namespace ai_vox

@@ -20,10 +20,10 @@
 
 #include "ai_vox_engine.h"
 #include "espressif_esp_websocket_client/esp_websocket_client.h"
+#include "flex_array/flex_array.h"
 #include "iot/iot_manager.h"
 #include "task_queue/task_queue.h"
 #include "wake_net/wake_net.h"
-#include "flex_array/flex_array.h"
 
 struct button_dev_t;
 class AudioInputEngine;
@@ -82,6 +82,7 @@ class EngineImpl : public Engine {
 
   mutable std::mutex mutex_;
   State state_ = State::kIdle;
+  ChatState chat_state_ = ChatState::kIdle;
   button_dev_t *button_handle_ = nullptr;
   gpio_num_t trigger_pin_ = GPIO_NUM_0;
   std::shared_ptr<AudioInputDevice> audio_input_device_;

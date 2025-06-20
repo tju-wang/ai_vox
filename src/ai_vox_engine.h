@@ -10,13 +10,12 @@
 #include <optional>
 #include <string>
 
+#include "ai_vox_observer.h"
 #include "audio_input_device.h"
 #include "audio_output_device.h"
 #include "iot_entity.h"
 
 namespace ai_vox {
-
-class Observer;
 
 class Engine {
  public:
