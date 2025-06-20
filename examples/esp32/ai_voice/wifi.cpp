@@ -34,16 +34,14 @@ Wifi::Wifi() : event_group_(xEventGroupCreate()) {
   cfg.dynamic_tx_buf_num = 32;
   cfg.tx_buf_type = 1;
 
-  cfg.static_rx_buf_num = 2;
+  cfg.static_rx_buf_num = 4;
   cfg.dynamic_rx_buf_num = 32;
 
   cfg.cache_tx_buf_num = 4;
 
   cfg.rx_mgmt_buf_type = 1;
-  cfg.rx_mgmt_buf_num = 0;
-  cfg.mgmt_sbuf_num = 10;
-
-  cfg.nano_enable = 1;
+  cfg.rx_mgmt_buf_num = 5;
+  cfg.mgmt_sbuf_num = 32;
 
   ESP_ERROR_CHECK(esp_wifi_init(&cfg));
 }
@@ -108,8 +106,16 @@ void Wifi::Connect(const std::string& ssid, const std::string& password) {
 
   wifi_config_t wifi_config;
   memset(&wifi_config, 0, sizeof(wifi_config));
+  wifi_config.sta.scan_method = WIFI_FAST_SCAN;
+  wifi_config.sta.sort_method = WIFI_CONNECT_AP_BY_SIGNAL;
+  wifi_config.sta.threshold.rssi = -127;
+  wifi_config.sta.pmf_cfg.capable = true;
+
   strncpy(reinterpret_cast<char*>(wifi_config.sta.ssid), ssid.c_str(), sizeof(wifi_config.sta.ssid) - 1);
-  strncpy(reinterpret_cast<char*>(wifi_config.sta.password), password.c_str(), sizeof(wifi_config.sta.password) - 1);
+  if (!password.empty()) {
+    wifi_config.sta.threshold.authmode = WIFI_AUTH_WPA2_PSK;
+    strncpy(reinterpret_cast<char*>(wifi_config.sta.password), password.c_str(), sizeof(wifi_config.sta.password) - 1);
+  }
 
   ESP_ERROR_CHECK(esp_wifi_set_mode(WIFI_MODE_STA));
   ESP_ERROR_CHECK(esp_wifi_set_config(WIFI_IF_STA, &wifi_config));

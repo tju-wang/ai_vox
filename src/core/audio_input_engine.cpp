@@ -41,11 +41,7 @@ AudioInputEngine::AudioInputEngine(std::shared_ptr<ai_vox::AudioInputDevice> aud
   if (heap_caps_get_total_size(MALLOC_CAP_SPIRAM) == 0) {
     opus_encoder_ctl(opus_encoder_, OPUS_SET_COMPLEXITY(0));
     opus_encoder_ctl(opus_encoder_, OPUS_SET_BITRATE(8000));
-    if (frame_duration <= 20) {
-      stack_size = 22 << 10;
-    } else if (frame_duration <= 60) {
-      stack_size = 20 << 10;
-    }
+    stack_size = 20 << 10;
   } else {
     opus_encoder_ctl(opus_encoder_, OPUS_SET_COMPLEXITY(5));
   }
