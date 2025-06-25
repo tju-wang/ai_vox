@@ -4,3 +4,4 @@ dependencies.lock
 /sdkconfig.old
 /build
 /.vscode
+/.pio
