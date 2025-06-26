@@ -6,7 +6,6 @@
 #include <esp_event_base.h>
 #include <freertos/FreeRTOS.h>
 #include <freertos/task.h>
-#include <mqtt_client.h>
 
 #include <condition_variable>
 #include <cstdint>
