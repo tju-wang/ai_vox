@@ -1,4 +1,4 @@
-name: Arduino ESP32 Build
+name: Arduino ESP32S3 Build
 
 on:
   push:
