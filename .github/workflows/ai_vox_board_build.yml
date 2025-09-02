@@ -16,7 +16,7 @@ jobs:
       ARDUINO_USER_DIR: ${{github.workspace}}/arduino_user
     strategy:
       matrix:
-        example: ["ai_vox_board/ai_vox_board"]
+        example: ["ai_vox_board/ai_vox_board", "ai_vox_board_3_0/ai_vox_board_3_0"]
         core_version: ["3.2.0"]
         fqbn: ["esp32:esp32:esp32s3"]
 

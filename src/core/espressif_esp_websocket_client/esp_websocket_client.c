@@ -23,6 +23,8 @@
 #include <errno.h>
 #include <arpa/inet.h>
 
+#define CONFIG_ESP_WS_CLIENT_ENABLE_DYNAMIC_BUFFER
+
 static const char *TAG = "websocket_client";
 
 #define WEBSOCKET_TCP_DEFAULT_PORT      (80)

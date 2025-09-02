@@ -5,7 +5,7 @@
 
 #include <driver/i2s_std.h>
 
-#include "audio_input_device.h"
+#include "audio_device/audio_input_device.h"
 
 class AudioInputDeviceSph0645 : public ai_vox::AudioInputDevice {
  public:
@@ -26,12 +26,12 @@ class AudioInputDeviceSph0645 : public ai_vox::AudioInputDevice {
   }
 
   ~AudioInputDeviceSph0645() {
-    Close();
+    CloseInput();
   }
 
  private:
-  bool Open(uint32_t sample_rate) override {
-    Close();
+  bool OpenInput(uint32_t sample_rate) override {
+    CloseInput();
 
     i2s_chan_config_t rx_chan_cfg = {
         .id = I2S_NUM_0,
@@ -54,10 +54,11 @@ class AudioInputDeviceSph0645 : public ai_vox::AudioInputDevice {
 
     ESP_ERROR_CHECK(i2s_channel_init_std_mode(i2s_rx_handle_, &rx_std_cfg));
     ESP_ERROR_CHECK(i2s_channel_enable(i2s_rx_handle_));
+    sample_rate_ = sample_rate;
     return true;
   }
 
-  void Close() override {
+  void CloseInput() override {
     if (i2s_rx_handle_ == nullptr) {
       return;
     }
@@ -65,6 +66,7 @@ class AudioInputDeviceSph0645 : public ai_vox::AudioInputDevice {
     i2s_channel_disable(i2s_rx_handle_);
     i2s_del_channel(i2s_rx_handle_);
     i2s_rx_handle_ = nullptr;
+    sample_rate_ = 0;
   }
 
   size_t Read(int16_t* buffer, uint32_t samples) override {
@@ -78,6 +80,10 @@ class AudioInputDeviceSph0645 : public ai_vox::AudioInputDevice {
     }
     delete[] raw_32bit_samples;
     return samples;
+  }
+
+  uint32_t input_sample_rate() override {
+    return sample_rate_;
   }
 
   i2s_chan_handle_t i2s_rx_handle_ = nullptr;
@@ -98,6 +104,7 @@ class AudioInputDeviceSph0645 : public ai_vox::AudioInputDevice {
 #endif
   };
   i2s_std_gpio_config_t gpio_cfg_;
+  uint32_t sample_rate_ = 0;
 };
 
 #endif

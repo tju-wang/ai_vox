@@ -8,8 +8,9 @@
 #include "ai_vox_engine.h"
 #include "ai_vox_observer.h"
 #include "display.h"
-#include "i2s_std_audio_input_device.h"
-#include "i2s_std_audio_output_device.h"
+#include "audio_device/audio_input_device_i2s_std.h"
+#include "audio_device/audio_output_device_i2s_std.h"
+#include "audio_device/audio_input_device_pdm.h"
 #include "wifi.h"
 
 #ifndef ARDUINO_ESP32_DEV
@@ -17,17 +18,26 @@
 #endif
 
 #ifndef WIFI_SSID
-#define WIFI_SSID "ssid"
+#define WIFI_SSID "unknown"
 #endif
 
 #ifndef WIFI_PASSWORD
-#define WIFI_PASSWORD "password"
+#define WIFI_PASSWORD "unknown"
 #endif
 
+#define AUDIO_INPUT_DEVICE_TYPE_PDM (0)
+#define AUDIO_INPUT_DEVICE_TYPE_I2S_STD (1)
+#define AUDIO_INPUT_DEVICE_TYPE AUDIO_INPUT_DEVICE_TYPE_I2S_STD
+
 namespace {
+#if AUDIO_INPUT_DEVICE_TYPE == AUDIO_INPUT_DEVICE_TYPE_I2S_STD
 constexpr gpio_num_t kMicPinBclk = GPIO_NUM_25;
 constexpr gpio_num_t kMicPinWs = GPIO_NUM_26;
 constexpr gpio_num_t kMicPinDin = GPIO_NUM_27;
+#elif AUDIO_INPUT_DEVICE_TYPE == AUDIO_INPUT_DEVICE_TYPE_PDM
+constexpr gpio_num_t kMicPdmClk = GPIO_NUM_12;
+constexpr gpio_num_t kMicPdmDin = GPIO_NUM_13;
+#endif
 
 constexpr gpio_num_t kSpeakerPinBclk = GPIO_NUM_33;
 constexpr gpio_num_t kSpeakerPinWs = GPIO_NUM_32;
@@ -58,7 +68,7 @@ auto g_observer = std::make_shared<ai_vox::Observer>();
 std::shared_ptr<ai_vox::iot::Entity> g_led_iot_entity;
 std::shared_ptr<ai_vox::iot::Entity> g_screen_iot_entity;
 std::shared_ptr<ai_vox::iot::Entity> g_speaker_iot_entity;
-auto g_audio_output_device = std::make_shared<ai_vox::I2sStdAudioOutputDevice>(kSpeakerPinBclk, kSpeakerPinWs, kSpeakerPinDout);
+auto g_audio_output_device = std::make_shared<ai_vox::AudioOutputDeviceI2sStd>(kSpeakerPinBclk, kSpeakerPinWs, kSpeakerPinDout);
 
 void InitDisplay() {
   pinMode(kDisplayBacklightPin, OUTPUT);
@@ -337,8 +347,11 @@ void setup() {
   pinMode(kLedPin, OUTPUT);
   digitalWrite(kLedPin, LOW);
   InitIot();
-
-  auto audio_input_device = std::make_shared<ai_vox::I2sStdAudioInputDevice>(kMicPinBclk, kMicPinWs, kMicPinDin);
+#if AUDIO_INPUT_DEVICE_TYPE == AUDIO_INPUT_DEVICE_TYPE_I2S_STD
+  auto audio_input_device = std::make_shared<ai_vox::AudioInputDeviceI2sStd>(kMicPinBclk, kMicPinWs, kMicPinDin);
+#elif AUDIO_INPUT_DEVICE_TYPE == AUDIO_INPUT_DEVICE_TYPE_PDM
+  auto audio_input_device = std::make_shared<ai_vox::PdmAudioInputDevice>(kMicPdmClk, kMicPdmDin);
+#endif
   auto& ai_vox_engine = ai_vox::Engine::GetInstance();
   ai_vox_engine.SetObserver(g_observer);
   ai_vox_engine.SetTrigger(kTriggerPin);
@@ -466,7 +479,7 @@ void loop() {
             auto volume = it->second;
             if (std::get_if<int64_t>(&volume)) {
               printf("Speaker volume: %lld\n", std::get<int64_t>(volume));
-              g_audio_output_device->SetVolume(std::get<int64_t>(volume));
+              g_audio_output_device->set_volume(std::get<int64_t>(volume));
               g_speaker_iot_entity->UpdateState("volume", std::get<int64_t>(volume));  // Note: Must UpdateState after change the device state
             }
           }

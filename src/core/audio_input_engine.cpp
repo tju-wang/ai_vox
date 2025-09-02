@@ -1,19 +1,13 @@
 #include "audio_input_engine.h"
 
-#include <freertos/FreeRTOS.h>
-#include <freertos/task.h>
+#include "libopus/opus.h"
+#include "silk_resampler.h"
 
 #ifndef CLOGGER_SEVERITY
 #define CLOGGER_SEVERITY CLOGGER_SEVERITY_WARN
 #endif
 
 #include "clogger/clogger.h"
-
-#ifdef ARDUINO
-#include "libopus/opus.h"
-#else
-#include "opus.h"
-#endif
 
 namespace {
 constexpr size_t kMaxOpusPacketSize = 1500;
@@ -27,6 +21,7 @@ AudioInputEngine::AudioInputEngine(std::shared_ptr<ai_vox::AudioInputDevice> aud
                                    AudioInputEngine::DataHandler &&handler,
                                    const uint32_t frame_duration)
     : handler_(std::move(handler)), audio_input_device_(std::move(audio_input_device)) {
+  CLOGI();
   int error = 0;
   opus_encoder_ = opus_encoder_create(kDefaultSampleRate, kDefaultChannels, OPUS_APPLICATION_VOIP, &error);
   assert(opus_encoder_ != nullptr);
@@ -45,33 +40,72 @@ AudioInputEngine::AudioInputEngine(std::shared_ptr<ai_vox::AudioInputDevice> aud
   } else {
     opus_encoder_ctl(opus_encoder_, OPUS_SET_COMPLEXITY(5));
   }
+  CLOGI();
 
-  audio_input_device_->Open(kDefaultSampleRate);
+  // audio_input_device_->Open(kDefaultSampleRate);
+  audio_input_device_->OpenInput(kDefaultSampleRate);
+  CLOGI();
+
+  if (audio_input_device_->input_sample_rate() != kDefaultSampleRate) {
+    // CLOGI("kDefaultSampleRate: %" PRIu32, kDefaultSampleRate);
+    // CLOGI("audio_input_device->input_sample_rate(): %" PRIu32, audio_input_device_->input_sample_rate());
+    // silk_resampler_ = new silk_resampler_state_struct;
+    // silk_resampler_init(
+    //     reinterpret_cast<silk_resampler_state_struct *>(silk_resampler_), audio_input_device_->input_sample_rate(), kDefaultSampleRate, 1);
+    resampler_ = std::make_unique<SilkResampler>(audio_input_device_->input_sample_rate(), kDefaultSampleRate);
+  }
+  CLOGI();
   task_queue_ = new TaskQueue("AudioInput", stack_size, tskIDLE_PRIORITY + 1);
-  task_queue_->Enqueue([this, samples = 16000 / 1000 * frame_duration]() { PullData(samples); });
+  task_queue_->Enqueue([this, samples = audio_input_device_->input_sample_rate() / 1000 * frame_duration]() { PullData(samples); });
   CLOGI("OK");
 }
 
 AudioInputEngine::~AudioInputEngine() {
+  CLOGI();
   delete task_queue_;
-  audio_input_device_->Close();
+  // delete reinterpret_cast<silk_resampler_state_struct *>(silk_resampler_);
+  audio_input_device_->CloseInput();
   opus_encoder_destroy(opus_encoder_);
   CLOG("OK");
 }
 
-void AudioInputEngine::PullData(const uint32_t samples) {
-  auto pcm = new int16_t[samples];
-  audio_input_device_->Read(pcm, samples);
+FlexArray<int16_t> AudioInputEngine::ReadPcm(const uint32_t samples) {
+  FlexArray<int16_t> pcm(samples);
+  audio_input_device_->Read(pcm.data(), pcm.size());
+  if (resampler_) {
+    return resampler_->Resample(std::move(pcm));
+  } else {
+    return pcm;
+  }
+  // return resampler_ ? resampler_->Resample(std::move(pcm)) : pcm;
+}
 
+// FlexArray<int16_t> AudioInputEngine::Resample(FlexArray<int16_t> &&input_pcm) {
+//   if (silk_resampler_ == nullptr) {
+//     return input_pcm;
+//   }
+
+//   FlexArray<int16_t> resampled_pcm(input_pcm.size() * kDefaultSampleRate / audio_input_device_->input_sample_rate());
+//   const auto ret =
+//       silk_resampler(reinterpret_cast<silk_resampler_state_struct *>(silk_resampler_), resampled_pcm.data(), input_pcm.data(), input_pcm.size());
+//   if (ret != 0) {
+//     CLOGE("silk_resampler_process failed with: %d", ret);
+//     abort();
+//   }
+//   return resampled_pcm;
+// }
+
+void AudioInputEngine::PullData(const uint32_t samples) {
+  auto pcm = ReadPcm(samples);
   FlexArray<uint8_t> data(kMaxOpusPacketSize);
-  const auto ret = opus_encode(opus_encoder_, pcm, samples, data.data(), data.size());
+  const auto ret = opus_encode(opus_encoder_, pcm.data(), pcm.size(), data.data(), data.size());
   if (ret > 0) {
     data.Resize(ret);
     handler_(std::move(data));
   } else {
     CLOGE("opus_encode failed with: %d", ret);
+    abort();
   }
-  delete[] pcm;
 
   task_queue_->Enqueue([this, samples]() { PullData(samples); });
 }
