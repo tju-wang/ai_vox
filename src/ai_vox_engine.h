@@ -11,8 +11,8 @@
 #include <string>
 
 #include "ai_vox_observer.h"
-#include "audio_input_device.h"
-#include "audio_output_device.h"
+#include "audio_device/audio_input_device.h"
+#include "audio_device/audio_output_device.h"
 #include "iot_entity.h"
 
 namespace ai_vox {

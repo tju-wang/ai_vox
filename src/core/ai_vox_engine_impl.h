@@ -22,12 +22,11 @@
 #include "flex_array/flex_array.h"
 #include "iot/iot_manager.h"
 #include "task_queue/task_queue.h"
-#include "wake_net/wake_net.h"
 
 struct button_dev_t;
 class AudioInputEngine;
 class AudioOutputEngine;
-
+class WakeNet;
 namespace ai_vox {
 
 class EngineImpl : public Engine {
@@ -55,6 +54,9 @@ class EngineImpl : public Engine {
     kListening,
     kSpeaking,
   };
+
+  EngineImpl(const EngineImpl &) = delete;
+  EngineImpl &operator=(const EngineImpl &) = delete;
 
   static void OnButtonClick(void *button_handle, void *usr_data);
   static void OnWebsocketEvent(void *handler_args, esp_event_base_t base, int32_t event_id, void *event_data);
@@ -97,7 +99,7 @@ class EngineImpl : public Engine {
   std::string websocket_url_;
   std::map<std::string, std::string> websocket_headers_;
 #ifdef ARDUINO_ESP32S3_DEV
-  WakeNet wake_net_;
+  std::unique_ptr<WakeNet> wake_net_;
 #endif
   TaskQueue task_queue_;
   std::unique_ptr<TaskQueue> transmit_queue_;

@@ -1,6 +1,10 @@
 #include "iot_manager.h"
 
 #include "cJSON.h"
+
+#ifndef CLOGGER_SEVERITY
+#define CLOGGER_SEVERITY CLOGGER_SEVERITY_WARN
+#endif
 #include "core/clogger/clogger.h"
 
 namespace ai_vox::iot {

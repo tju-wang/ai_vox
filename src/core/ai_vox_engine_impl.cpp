@@ -13,6 +13,7 @@
 #include "espressif_button/button_gpio.h"
 #include "espressif_button/iot_button.h"
 #include "fetch_config.h"
+#include "wake_net/wake_net.h"
 
 #ifndef CLOGGER_SEVERITY
 #define CLOGGER_SEVERITY CLOGGER_SEVERITY_WARN
@@ -103,9 +104,6 @@ EngineImpl::EngineImpl()
       websocket_headers_{
           {"Authorization", "Bearer test-token"},
       },
-#ifdef ARDUINO_ESP32S3_DEV
-      wake_net_([this]() { task_queue_.Enqueue([this]() { OnWakeUp(); }); }),
-#endif
       task_queue_("AiVoxMain", 1024 * 4, tskIDLE_PRIORITY + 1) {
   CLOGD();
 }
@@ -170,6 +168,9 @@ void EngineImpl::Start(std::shared_ptr<AudioInputDevice> audio_input_device, std
 
   audio_input_device_ = std::move(audio_input_device);
   audio_output_device_ = std::move(audio_output_device);
+#ifdef ARDUINO_ESP32S3_DEV
+  wake_net_ = std::make_unique<WakeNet>([this]() { task_queue_.Enqueue([this]() { OnWakeUp(); }); }, audio_input_device_);
+#endif
 
   button_config_t btn_cfg = {
       .long_press_time = 1000,
@@ -355,7 +356,7 @@ void EngineImpl::OnJsonData(FlexArray<uint8_t> &&data) {
         audio_input_engine_.reset();
         transmit_queue_.reset();
 #ifdef ARDUINO_ESP32S3_DEV
-        wake_net_.Start(audio_input_device_);
+        wake_net_->Start();
 #endif
         audio_output_engine_ = std::make_shared<AudioOutputEngine>(audio_output_device_, audio_frame_duration_);
         ChangeState(State::kSpeaking);
@@ -474,7 +475,7 @@ void EngineImpl::OnWebSocketDisconnected() {
   esp_websocket_client_close(web_socket_client_, pdMS_TO_TICKS(5000));
 
 #ifdef ARDUINO_ESP32S3_DEV
-  wake_net_.Start(audio_input_device_);
+  wake_net_->Start();
 #endif
   ChangeState(State::kStandby);
 }
@@ -570,7 +571,7 @@ void EngineImpl::LoadProtocol() {
     return;
   }
 #ifdef ARDUINO_ESP32S3_DEV
-  wake_net_.Start(audio_input_device_);
+  wake_net_->Start();
 #endif
   ChangeState(State::kStandby);
   return;
@@ -594,7 +595,7 @@ void EngineImpl::StartListening() {
 
   audio_output_engine_.reset();
 #ifdef ARDUINO_ESP32S3_DEV
-  wake_net_.Stop();
+  wake_net_->Stop();
 #endif
   transmit_queue_ = std::make_unique<TaskQueue>("AiVoxTransmit", 1024 * 3, tskIDLE_PRIORITY + 2);
   audio_input_engine_ = std::make_shared<AudioInputEngine>(
@@ -672,7 +673,7 @@ void EngineImpl::DisconnectWebSocket() {
   transmit_queue_.reset();
   audio_output_engine_.reset();
 #ifdef ARDUINO_ESP32S3_DEV
-  wake_net_.Start(audio_input_device_);
+  wake_net_->Start();
 #endif
   esp_websocket_client_close(web_socket_client_, pdMS_TO_TICKS(5000));
 }

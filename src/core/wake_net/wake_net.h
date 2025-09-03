@@ -6,27 +6,33 @@
 #include <functional>
 #include <memory>
 
-#include "../task_queue/task_queue.h"
-#include "audio_input_device.h"
+#include "audio_device/audio_input_device.h"
+#include "core/flex_array/flex_array.h"
+#include "core/task_queue/task_queue.h"
 
 struct esp_afe_sr_data_t;
+class SilkResampler;
 
 class WakeNet {
  public:
-  WakeNet(std::function<void()>&& handler);
+  explicit WakeNet(std::function<void()>&& handler, std::shared_ptr<ai_vox::AudioInputDevice> audio_input_device);
   ~WakeNet();
-
-  void Start(std::shared_ptr<ai_vox::AudioInputDevice> audio_input_device);
+  void Start();
   void Stop();
 
  private:
-  void FeedData(std::shared_ptr<ai_vox::AudioInputDevice>&& audio_input_device, const uint32_t afe_chunksize, const uint32_t channels);
+  WakeNet(const WakeNet&) = delete;
+  WakeNet& operator=(const WakeNet&) = delete;
+  void FeedData(const uint32_t samples);
   void DetectWakeWord();
+  FlexArray<int16_t> ReadPcm(const uint32_t samples);
 
   std::function<void()> handler_;
+  std::shared_ptr<ai_vox::AudioInputDevice> audio_input_device_;
   TaskQueue* detect_task_ = nullptr;
-  TaskQueue* feed_task_ = nullptr;
-  esp_afe_sr_data_t* afe_data_;
+  TaskQueue *feed_task_ = nullptr;
+  std::unique_ptr<SilkResampler> resampler_;
+  esp_afe_sr_data_t* afe_data_ = nullptr;
 };
 
 #endif  // _WAKE_NET_H_
